@@ -905,7 +905,7 @@ const LEVELS = {
   normal: { mem: 'none', voids: true, flush: true, guard: true, danger: false, short: true, slamdef: true, eatbo: false, noise: 0,
     ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: false, split: false },
   hard: { mem: 'full', voids: true, flush: true, guard: true, danger: true, short: true, slamdef: true, eatbo: true, noise: 0,
-    ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: true, split: false, pimc: 24, budget: 350, shortBias: 0.7 },
+    ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: true, split: false, pimc: 24, budget: 350, shortBias: 0.7, penW: 0.35 },
 };
 LEVELS.roll = Object.assign({}, LEVELS.hard, { pimc: 0, budget: 0 });          // 推演时大家按这套打
 function pyRound(v) { const f = Math.floor(v), d = v - f; if (d > 0.5) return f + 1; if (d < 0.5) return f; return f % 2 === 0 ? f : f + 1; }
@@ -1226,13 +1226,13 @@ function handOutcome(st) {
 }
 // 按罚的份数算账：赢了对方罚几份就赚几份，输了自己罚几份就亏几份——所以赢的时候把分堆到对方一个人身上，
 // 牌差的时候少输就是赢（守在 3000 以内只罚 1 份）
-function worldValue(w, me) {
+function worldValue(w, me, cfg) {
   const r = handOutcome(w), team = me & 1, sc = r.scores;
   const mine = Math.max(sc[team], sc[team + 2]), theirs = Math.max(sc[1 - team], sc[3 - team]);
-  const shape = 0.1 * Math.tanh((theirs - mine) / 3000);
+  const shape = 0.15 * Math.tanh((theirs - mine) / 2000);
   if (r.winTeam === null) return shape;
-  const units = penaltyOf(r, sc);
-  return (r.winTeam === team ? units : -units) + shape;
+  const extra = (penaltyOf(r, sc) - 1) * (cfg && cfg.penW !== undefined ? cfg.penW : 0.35);   // 多罚的份数打个折：推演次数有限，太看重会乱
+  return (r.winTeam === team ? 1 + extra : -1 - extra) + shape;
 }
 function playFast(w, p, c) {                                         // 推演用：原地出牌
   const h = w.hands[p];
@@ -1304,7 +1304,7 @@ function pimcChoose(st, me, cfg) {
       const w = copyWorld(w0);
       playFast(w, me, c);
       while (w.phase === 'play') { const p = w.turn; playFast(w, p, botChoose(w, p, 'roll').c); }
-      sum.set(c, sum.get(c) + worldValue(w, me));
+      sum.set(c, sum.get(c) + worldValue(w, me, cfg));
     }
     n++;
     if (cfg.budget && n >= 8 && Date.now() - t0 > cfg.budget) break;
