@@ -639,6 +639,12 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
 
 .toast { position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 40; background: var(--panel); color: var(--panel-ink); border: 1px solid var(--line); padding: 9px 14px; border-radius: 12px; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); max-width: calc(100% - 32px); }
 
+/* 窄屏：标题栏一行放不下时，先藏"第几把"，再藏"对战/练习"小字 */
+@media (max-width: 400px) { #handNo { display: none; } }
+@media (max-width: 370px) { .brand small { display: none; } }
+@media (max-width: 440px) { .in-room .brand small { display: none; } }
+.me-row .seat .who .nm.me-nm { color: var(--page-ink); font-weight: 600; font-size: 13px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -650,7 +656,7 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
     <div class="meta">
       <span class="pill room" id="roomPill" hidden></span>
       <span class="pill" id="handNo">第1把</span>
-      <span class="pill" id="tally">我们 <strong>0</strong> : <strong>0</strong> 对方</span>
+      <span class="pill" id="tally">被罚 我们 <strong>0</strong> : <strong>0</strong> 对方</span>
       <button class="icon-btn net" id="netBtn" type="button" hidden>联机</button>
       <button class="icon-btn" id="menuBtn" type="button">菜单</button>
     </div>
@@ -719,7 +725,8 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
       <li>有这门必须跟，没有就随便垫。同花色最大的收这一墩，下一墩由他先出。</li>
       <li>分牌：红桃 2~4 不算分，5~10 每张 40，J 80，Q 120，K 160，A 200；黑桃Q是<b>猪</b> 400，方块J是<b>羊</b> 400；梅花10是<b>波</b>，谁收到它，总分乘 8（只收到波、别的分都没有算 0）。</li>
       <li>分牌全部出完这把就结束。四个人里分最高的那个人，他们那队输。</li>
-      <li>一个人收齐 13 张红桃是<b>小满贯</b>，直接赢；连猪、羊、波也都收了是<b>大满贯</b>，惩罚加倍，记赢两把。</li>
+      <li>一个人收齐 13 张红桃是<b>小满贯</b>，直接赢；连猪、羊、波也都收了是<b>大满贯</b>，罚双倍。</li>
+      <li>输了罚几份，看输的那队里分最高的人：3000 以内罚 1 份，3000 起 2 份，6000 起 3 份，9000 起 4 份。队友一起受罚。所以赢的时候要把分堆到对方一个人身上，牌差的时候少输就是赢。</li>
     </ul>
     <h3>对战版的规定</h3>
     <ul>
@@ -797,7 +804,7 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 function dealHands() { const d = shuffle([...Array(52).keys()]); return [0, 1, 2, 3].map(i => d.slice(i * 13, i * 13 + 13).sort((a, b) => a - b)); }
 
 function newMatch(seats) {
-  return startHand({ v: 0, seats, hand: 0, wins: [0, 0], log: [] }, null, true);
+  return startHand({ v: 0, seats, hand: 0, wins: [0, 0], pen: [0, 0], log: [] }, null, true);
 }
 function startHand(st0, leader, first) {
   const hands = dealHands();
@@ -848,6 +855,13 @@ function applyMove(st0, p, c) {
   if (taken === PUBLIC.size || st.hands[w].length === 0) finishHand(st);
   return st;
 }
+// 罚几份：看输的那队里分最高的人，3000 以内 1 份，3000 起 2 份，6000 起 3 份，9000 起 4 份；大满贯翻倍
+const penTier = s => (s >= 9000 ? 4 : s >= 6000 ? 3 : s >= 3000 ? 2 : 1);
+function penaltyOf(res, sc) {
+  if (res.winTeam === null) return 0;
+  const lt = 1 - res.winTeam;
+  return penTier(Math.max(sc[lt], sc[lt + 2])) * (res.kind === 'grand' ? 2 : 1);
+}
 function finishHand(st) {
   st.phase = 'end';
   const sc = [0, 1, 2, 3].map(p => scoreOf(st, p));
@@ -864,13 +878,16 @@ function finishHand(st) {
   }
   res.scores = sc;
   res.loser = null;
+  res.pen = penaltyOf(res, sc);
   if (res.winTeam !== null) {
     const lt = 1 - res.winTeam;
     res.loser = [0, 1, 2, 3].filter(p => (p & 1) === lt).sort((a, b) => sc[b] - sc[a] || a - b)[0];
     st.wins[res.winTeam] += res.kind === 'grand' ? 2 : 1;
+    st.pen = (st.pen || [0, 0]).slice();
+    st.pen[lt] += res.pen;
   }
   st.result = res;
-  st.log = (st.log || []).concat([{ hand: st.hand, winTeam: res.winTeam, kind: res.kind }]).slice(-40);
+  st.log = (st.log || []).concat([{ hand: st.hand, winTeam: res.winTeam, kind: res.kind, pen: res.pen }]).slice(-40);
 }
 function nextHand(st0) {
   const r = st0.result;
@@ -1207,11 +1224,15 @@ function handOutcome(st) {
   const teams = new Set(top.map(p => p & 1));
   return teams.size === 2 ? { winTeam: null, kind: 'tie', scores: sc } : { winTeam: 1 - (top[0] & 1), kind: 'normal', scores: sc };
 }
+// 按罚的份数算账：赢了对方罚几份就赚几份，输了自己罚几份就亏几份——所以赢的时候把分堆到对方一个人身上，
+// 牌差的时候少输就是赢（守在 3000 以内只罚 1 份）
 function worldValue(w, me) {
   const r = handOutcome(w), team = me & 1, sc = r.scores;
-  let v = r.winTeam === null ? 0 : (r.winTeam === team ? 1 : -1) * (r.kind === 'grand' ? 2 : 1);
   const mine = Math.max(sc[team], sc[team + 2]), theirs = Math.max(sc[1 - team], sc[3 - team]);
-  return v + 0.2 * Math.tanh((theirs - mine) / 1500);
+  const shape = 0.1 * Math.tanh((theirs - mine) / 3000);
+  if (r.winTeam === null) return shape;
+  const units = penaltyOf(r, sc);
+  return (r.winTeam === team ? units : -units) + shape;
 }
 function playFast(w, p, c) {                                         // 推演用：原地出牌
   const h = w.hands[p];
@@ -1295,7 +1316,9 @@ function pimcChoose(st, me, cfg) {
   let best = rep !== undefined && sum.has(rep) ? rep : cands[0];
   for (const c of cands) if (sum.get(c) > sum.get(best) + 1e-9) best = c;
   if (best === rep) return base;
-  return { c: best, why: `往后推演了${n}种发牌，这样出赢面最大` };
+  const fmt = v => (v >= 0 ? '+' : '−') + Math.abs(v / n).toFixed(1);
+  const alt = rep !== undefined && sum.has(rep) ? `，出${nm(base.c)}平均 ${fmt(sum.get(rep))} 份` : '';
+  return { c: best, why: `往后推演了 ${n} 种发牌：这样出平均 ${fmt(sum.get(best))} 份${alt}（+ 是对方挨罚）` };
 }
 /* ================= 页面状态 ================= */
 const $ = s => document.querySelector(s);
@@ -1378,11 +1401,13 @@ function render() {
   const holding = now < hold.until && hold.trick;
   const myTeam = V.my & 1;
   $('#handNo').textContent = `第${st.hand}把`;
-  $('#tally').innerHTML = `我们 <strong>${st.wins[myTeam]}</strong> : <strong>${st.wins[1 - myTeam]}</strong> 对方`;
+  const pen = st.pen || [0, 0];
+  $('#tally').innerHTML = `被罚 我们 <strong>${pen[myTeam]}</strong> : <strong>${pen[1 - myTeam]}</strong> 对方`;
   const rp = $('#roomPill');
   if (V.mp) { rp.hidden = false; rp.textContent = `房间 ${MP.code}${V.spect ? ' · 旁观' : ''}`; } else rp.hidden = true;
   $('#leaveBtn').hidden = !V.mp;
   $('#netBtn').hidden = !NET || V.mp;
+  document.documentElement.classList.toggle('in-room', !!V.mp);
 
   for (let seat = 0; seat < 4; seat++) renderSeat(V, seat, holding);
   renderCenter(V, holding);
@@ -1401,9 +1426,9 @@ function renderSeat(V, seat, holding) {
   let name = '';
   if (V.mp) {
     const s = st.seats[seat];
-    const n = (pos === 0 && !V.spect) ? '' : V.names[seat];
+    const n = (pos === 0 && !V.spect) ? myRoomName() : V.names[seat];
     const on = s.kind === 'human' && MP.online.has(s.uid);
-    name = (n ? `<span class="nm">${esc(n)}</span>` : '') + (on && pos !== 0 ? '<span class="online" title="在线"></span>' : '');
+    name = (n ? `<span class="nm${pos === 0 ? ' me-nm' : ''}">${esc(n)}</span>` : '') + (on && pos !== 0 ? '<span class="online" title="在线"></span>' : '');
   } else if (pos !== 0) name = '<span class="nm">电脑</span>';
   const lbl = pos === 0 ? (V.spect ? POS_LABEL[0] + '的位置' : '你') : POS_LABEL[pos];
   const human = st.seats[seat].kind === 'human';
@@ -1511,20 +1536,26 @@ function maybeShowResult(V, holding) {
       `<td class="num">${st.hasbo[seat] ? `${base}×8=` : ''}${sc}</td></tr>`;
   }
   let why = '';
-  if (r.kind === 'small' || r.kind === 'grand') why = `${esc(whoName(V, r.slammer))}一个人收齐了 13 张红桃${r.kind === 'grand' ? '，连猪羊波也收了，记赢两把' : '，直接赢'}。`;
+  if (r.kind === 'small' || r.kind === 'grand') why = `${esc(whoName(V, r.slammer))}一个人收齐了 13 张红桃${r.kind === 'grand' ? '，连猪羊波也收了，罚双倍' : '，直接赢'}。`;
   else if (r.kind === 'tie') why = '两队的最高分一样，这把不算输赢。';
   else why = `分最高的是${esc(whoName(V, r.scores.indexOf(maxSc)))}，${((r.scores.indexOf(maxSc)) & 1) === myTeam ? '我们' : '对方'}这队输。`;
+  const pen = st.pen || [0, 0];
+  if (r.winTeam !== null && r.pen) {
+    const lt = 1 - r.winTeam, m = Math.max(r.scores[lt], r.scores[lt + 2]);
+    const band = m >= 9000 ? '9000 以上' : m >= 6000 ? '6000 档' : m >= 3000 ? '3000 档' : '3000 以内';
+    why += `${lt === myTeam ? '我们' : '对方'}罚 <b>${r.pen}</b> 份（输家最高 ${m} 分，${band}${r.kind === 'grand' ? '，大满贯翻倍' : ''}）。`;
+  }
   const nextLeader = r.loser !== null ? whoName(V, r.loser ^ 2) : whoName(V, st.leader0);
   $('#resultBody').innerHTML =
     `<div class="banner ${cls}">${banner}${slam ? `<span class="slam">${slam}</span>` : ''}</div>` +
     `<p class="mute">${why}</p>` +
     `<table class="res"><tbody>${rows}</tbody></table>` +
     `<div class="row" style="justify-content:space-between">` +
-    `<div class="tally">比分 我们 <strong>${st.wins[myTeam]}</strong> : <strong>${st.wins[1 - myTeam]}</strong> 对方</div>` +
+    `<div class="tally">累计被罚 我们 <strong>${pen[myTeam]}</strong> : <strong>${pen[1 - myTeam]}</strong> 对方</div>` +
     `<button class="btn primary" id="nextBtn" type="button">下一把</button></div>` +
     `<p class="mute" style="margin-top:8px">下一把由${esc(nextLeader)}先出。</p>`;
   openSheet('resultSheet');
-  if (!V.spect && r.winTeam !== null && r.winTeam !== myTeam) showPenalty();
+  if (!V.spect && r.winTeam !== null && r.winTeam !== myTeam) showPenalty(r.pen);
   $('#nextBtn').onclick = () => {
     closeSheet('resultSheet');
     if (V.mp) mpNext(st.hand);
@@ -1533,8 +1564,9 @@ function maybeShowResult(V, holding) {
 }
 
 /* 输了的惩罚：先回答"加工黄金、买黄金到哪里？"，点了"到德福黄金"才看得到下一把 */
-function showPenalty() {
+function showPenalty(units) {
   const panel = $('#penaltySheet .gold-ad');
+  $('#penaltySheet .ad-tag').textContent = `输了！罚 ${units || 1} 份 · 答对了才能打下一把`;
   panel.classList.remove('done');
   $('#goldOk').hidden = true;
   $('#goldBtn').disabled = false;
@@ -1831,6 +1863,25 @@ function saveMyName() {
   NET.setName(n);
 }
 const inviteLink = code => location.href.split('#')[0].split('?')[0] + '?room=' + code;
+function myRoomName() {
+  const s = MP.doc && MP.mySeat !== null ? MP.doc.seats[MP.mySeat] : null;
+  return (s && s.name) || (NET ? NET.getName() : '') || '';
+}
+function teamLine(d) {
+  const me = MP.mySeat, nmOf = i => { const s = d.seats[i]; return s.kind === 'human' ? (s.uid === MP.uid ? '你' : (s.name || MP.names[i] || '朋友')) : s.kind === 'bot' ? '电脑' : '空位'; };
+  return `你和${nmOf((me + 2) % 4)}（${(me + 2) % 4 + 1}号）一队，对手是${nmOf((me + 1) % 4)}、${nmOf((me + 3) % 4)}。`;
+}
+async function mpRename(n) {
+  if (NET) NET.setName(n);
+  await mpWrite(cur => {
+    if (!cur) return null;
+    const i = cur.seats.findIndex(x => x.kind === 'human' && x.uid === MP.uid);
+    if (i < 0 || cur.seats[i].name === n) return null;
+    cur.seats[i] = Object.assign({}, cur.seats[i], { name: n });
+    return cur;
+  }, true);
+  toast('名字改好了');
+}
 function meSeat() {
   const s = { kind: 'human', uid: MP.uid };
   const n = NET ? NET.getName() : '';
@@ -1841,6 +1892,7 @@ function meSeat() {
 function renderLobby(okArg, code) {
   const body = $('#mpBody');
   if (!body) return;
+  if (document.activeElement && document.activeElement.id === 'renameBox') return;   // 正在改名字，先别刷新
   const ok = okArg === undefined ? MP.ok : okArg;
   if (!ok) {
     body.innerHTML = `<p>这里现在开不了多人房间。需要满足两点：</p>
@@ -1876,8 +1928,10 @@ function renderLobby(okArg, code) {
   const seatsHTML = d.seats.map((s, i) => {
     const team = (i & 1) === 0 ? '甲队' : '乙队';
     let occ, cls = '';
-    if (s.kind === 'human') occ = s.uid === MP.uid ? '你' : (MP.names[i] || '朋友');
-    else if (s.kind === 'bot') occ = '电脑';
+    if (s.kind === 'human') {
+      occ = s.uid === MP.uid ? `你（${myRoomName() || '没填名字'}）` : (MP.names[i] || '朋友');
+      if (s.uid === d.host) occ += ' · 房主';
+    } else if (s.kind === 'bot') occ = '电脑';
     else { occ = '空位'; cls = 'empty'; }
     const online = s.kind === 'human' && s.uid !== MP.uid && MP.online.has(s.uid) ? ' · 在线' : '';
     let acts = '';
@@ -1889,6 +1943,7 @@ function renderLobby(okArg, code) {
       if (s.kind === 'human' && s.uid !== MP.uid) acts += `<button class="seat-btn" data-take="${i}" type="button">让电脑接手</button>`;
       if (s.kind === 'bot' && s.was === MP.uid) acts += `<button class="seat-btn" data-back="${i}" type="button">坐回去</button>`;
     } else if (NET && s.kind === 'bot' && !s.was) acts += `<button class="seat-btn" data-takebot="${i}" type="button">替电脑坐</button>`;
+    if (NET && s.kind === 'human' && s.uid === MP.uid) acts += '<button class="seat-btn" data-rename type="button">改名</button>';
     return `<div class="seat-row"><span class="no">${i + 1}号</span><span class="team">${team}</span><span class="occ ${cls}">${esc(occ)}${online}</span>${acts}</div>`;
   }).join('');
   const playing = d.status === 'play';
@@ -1901,6 +1956,8 @@ function renderLobby(okArg, code) {
     <p class="mute" style="margin-top:8px">1号和3号一队，2号和4号一队，按 1→2→3→4 出牌。${playing ? '这桌已经开打了。' : '人齐了就开始，空位会由电脑补上。'}</p>
     <div class="row" style="margin-top:8px"><span class="mute">每人每手出牌时间</span>${isHost ? `<div class="seg" id="mpTimer" role="group" aria-label="出牌时间"><button type="button" data-v="15" aria-pressed="${(d.timer || 30) === 15}">15 秒</button><button type="button" data-v="30" aria-pressed="${(d.timer || 30) === 30}">30 秒</button></div>` : `<b>${d.timer || 30} 秒</b><span class="mute">（房主定）</span>`}</div>
     <div class="seats">${seatsHTML}</div>
+    ${seated ? `<p class="mute" style="margin:-2px 0 10px">${esc(teamLine(d))}</p>` : ''}
+    <div class="row" id="renameRow" hidden style="margin-bottom:10px"><input type="text" id="renameBox" maxlength="8" aria-label="新名字"><button class="btn" id="renameOk" type="button">改好了</button></div>
     <div class="row">${playing ? '<button class="btn primary" id="mpBack" type="button">回到牌桌</button>' : `<button class="btn primary" id="mpStart" type="button" ${seated ? '' : 'disabled'}>开始</button>`}
       <button class="btn ghost" id="mpLeave" type="button">离开房间</button></div>
     ${!seated && !playing ? '<p class="mute" style="margin-top:8px">先选一个座位坐下。</p>' : ''}
@@ -1911,6 +1968,10 @@ function renderLobby(okArg, code) {
   body.querySelectorAll('[data-take]').forEach(b => b.onclick = () => guard(() => mpTakeover(Number(b.dataset.take))));
   body.querySelectorAll('[data-back]').forEach(b => b.onclick = () => guard(() => mpReclaim(Number(b.dataset.back))));
   body.querySelectorAll('[data-takebot]').forEach(b => b.onclick = () => guard(() => mpTakeBot(Number(b.dataset.takebot))));
+  const rn = body.querySelector('[data-rename]');
+  if (rn) rn.onclick = () => { $('#renameRow').hidden = false; const box = $('#renameBox'); box.value = myRoomName(); box.focus(); box.select(); };
+  const ro = $('#renameOk');
+  if (ro) ro.onclick = () => { const box = $('#renameBox'); const n = (box.value || '').trim().slice(0, 8); if (!n) { toast('名字不能空着'); return; } box.blur(); guard(() => mpRename(n)); };
   const cl = $('#copyLink');
   if (cl) cl.onclick = () => {
     const link = inviteLink(d.code);
@@ -2038,6 +2099,10 @@ function acceptDoc(d, force) {                       // force：断网时自己�
     } else onState(!force && prevGame && prevGame.hand <= MP.doc.game.hand ? prevGame : null, MP.doc.game);
   }
   if (!$('#mpSheet').hidden) renderLobby();
+  if (NET && MP.doc.status === 'play' && MP.mySeat === null && !MP.busy && document.visibilityState === 'visible') {
+    const back = MP.doc.seats.findIndex(s => s.kind === 'bot' && s.was === MP.uid);
+    if (back >= 0) guard(async () => { await mpReclaim(back); if (MP.mySeat !== null) toast('你刚才掉线了，电脑替你打了几手，现在坐回来了'); });
+  }
 }
 
 async function resolveNames() {
@@ -2045,7 +2110,7 @@ async function resolveNames() {
   const ids = MP.doc.seats.filter(s => s.kind === 'human' && s.uid).map(s => s.uid);
   let ps = {};
   try { if (MP.user && ids.length) ps = await MP.user.profiles(ids); } catch (e) { ps = {}; }
-  MP.names = MP.doc.seats.map(s => s.kind === 'bot' ? '电脑' : s.kind === 'empty' ? '空位' : s.uid === MP.uid ? '你' : (s.name || (ps[s.uid] && ps[s.uid].name) || '朋友'));
+  MP.names = MP.doc.seats.map(s => s.kind === 'bot' ? (s.was && s.name ? `${s.name}（电脑代打）` : '电脑') : s.kind === 'empty' ? '空位' : s.uid === MP.uid ? '你' : (s.name || (ps[s.uid] && ps[s.uid].name) || '朋友'));
   if (MODE === 'mp') render();
   if (!$('#mpSheet').hidden) renderLobby();
 }
@@ -2098,6 +2163,7 @@ async function mpHumanMove(v, p, c, auto) {
       if (g.v !== v || g.turn !== p || g.seats[p].uid !== MP.uid) return null;
       cur.game = applyMove(g, p, c);
       if (auto) cur.game.lastAuto = { seat: p, c, v: cur.game.v };
+      if (cur.miss && cur.miss[p]) { cur.miss = Object.assign({}, cur.miss); cur.miss[p] = 0; }
       return cur;
     }, false);
   } catch (e) { toast('出牌没发出去，再点一次'); }
@@ -2111,6 +2177,16 @@ async function mpAutoMove(v, seat) {
       const r = botChoose(g, seat, 'normal');
       cur.game = applyMove(g, seat, r.c);
       cur.game.lastAuto = { seat, c: r.c, v: cur.game.v };
+      cur.miss = Object.assign({}, cur.miss);
+      cur.miss[seat] = (cur.miss[seat] || 0) + 1;
+      if (cur.miss[seat] >= 2 && cur.seats[seat].kind === 'human') {      // 连着两手掉线：电脑先接手，免得大家每手干等
+        const s0 = cur.seats[seat];
+        const bot = { kind: 'bot', uid: null, was: s0.uid };
+        if (s0.name) bot.name = s0.name;
+        cur.seats[seat] = bot;
+        cur.game.seats[seat] = clone(bot);
+        cur.miss[seat] = 0;
+      }
       return cur;
     }, true);
   } catch (e) { /* 下一次计时再试 */ }
