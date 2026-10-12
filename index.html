@@ -1,4 +1,400 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="拱猪对战"><title>芒市拱猪对战</title><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style></head><body><style>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="拱猪对战"><meta name="description" content="芒市规则拱猪：和电脑打，或者开房间和朋友联机打。"><title>芒市拱猪对战</title><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style></head><body><script>
+/* 网站版联机：借公共 MQTT 服务器在朋友的手机之间同步房间。
+   这里提供和 Claude 里一样的 db / user / room 接口，房间逻辑不用改。
+   先连国内节点 broker-cn.emqx.io，连不上再试 broker.emqx.io。 */
+(() => {
+  'use strict';
+  if (window.claude) return;
+  const BROKERS = window.__GZ_BROKERS__ || ['wss://broker-cn.emqx.io:8084/mqtt', 'wss://broker.emqx.io:8084/mqtt'];
+  const PREFIX = window.__GZ_PREFIX__ || 'mangshi-gongzhu/v1/';
+  const enc = new TextEncoder(), dec = new TextDecoder();
+  const ls = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 不让存就算了 */ } },
+  };
+  const rnd = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  let uid = ls.get('gzd-uid');
+  if (!uid || !/^u[a-z0-9]{8,20}$/.test(uid)) { uid = 'u' + rnd(12); ls.set('gzd-uid', uid); }
+  const TAB = rnd(8);
+  const getName = () => (ls.get('gzd-name') || '').trim().slice(0, 8);
+  const setName = n => ls.set('gzd-name', String(n || '').trim().slice(0, 8));
+  const names = new Map();
+
+  /* ---------- 极简 MQTT 3.1.1 客户端（只用 QoS 0） ---------- */
+  const lenBytes = n => { const o = []; do { let b = n % 128; n = Math.floor(n / 128); if (n > 0) b |= 128; o.push(b); } while (n > 0); return o; };
+  const strBytes = s => { const b = enc.encode(s); return [b.length >> 8, b.length & 255, ...b]; };
+  const packet = (head, body) => new Uint8Array([head, ...lenBytes(body.length), ...body]);
+  const PING = new Uint8Array([0xC0, 0]);
+  const mq = {
+    ws: null, ok: false, idx: 0, buf: new Uint8Array(0), pid: 1, want: false, connecting: false, retryMs: 600,
+    subs: new Map(), acks: new Map(), waiters: [], statusFns: new Set(),
+    pingAt: 0, lastRx: 0, dead: false,
+  };
+  function setOk(v) {
+    if (mq.ok === v) return;
+    mq.ok = v;
+    if (v) { const w = mq.waiters; mq.waiters = []; w.forEach(f => f()); }
+    mq.statusFns.forEach(f => { try { f(v); } catch (e) { console.error(e); } });
+  }
+  function send(bytes) {
+    if (!mq.ws || mq.ws.readyState !== 1) return false;
+    if (mq.dead) return true;                          // 测试用：网“半断”，发了等于没发
+    try { mq.ws.send(bytes); return true; } catch (e) { return false; }
+  }
+  function openSocket(url) {
+    return new Promise(resolve => {
+      let ws = null, done = false, t = null;
+      const fin = ok => {
+        if (done) return;
+        done = true; clearTimeout(t);
+        if (!ok && ws) { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; try { ws.close(); } catch (e) { /* 已关 */ } }
+        resolve(ok ? ws : null);
+      };
+      try { ws = new WebSocket(url, ['mqtt']); } catch (e) { resolve(null); return; }
+      ws.binaryType = 'arraybuffer';
+      t = setTimeout(() => fin(false), 6000);
+      ws.onopen = () => ws.send(packet(0x10, [0, 4, 77, 81, 84, 84, 4, 2, 0, 30, ...strBytes('gz' + TAB)]));
+      ws.onmessage = ev => { const b = new Uint8Array(ev.data); fin(b[0] === 0x20 && b[3] === 0); };
+      ws.onerror = () => fin(false);
+      ws.onclose = () => fin(false);
+    });
+  }
+  async function connectLoop() {
+    if (mq.connecting || mq.ok) return;
+    mq.connecting = true;
+    try {
+      while (mq.want && !mq.ok) {
+        for (let i = 0; i < BROKERS.length && !mq.ok; i++) {
+          const ws = await openSocket(BROKERS[i]);
+          if (ws) attach(ws, i);
+        }
+        if (!mq.ok) { await sleep(mq.retryMs); mq.retryMs = Math.min(8000, mq.retryMs * 2); }
+      }
+    } finally { mq.connecting = false; }
+  }
+  function attach(ws, i) {
+    mq.ws = ws; mq.idx = i; mq.buf = new Uint8Array(0); mq.retryMs = 600;
+    mq.dead = false; mq.pingAt = 0; mq.lastRx = Date.now();
+    ws.onmessage = ev => { if (mq.dead) return; mq.lastRx = Date.now(); feed(new Uint8Array(ev.data)); };
+    ws.onerror = ws.onclose = () => { if (mq.ws === ws) dropSocket(); };
+    for (const topic of mq.subs.keys()) sendSub(topic);
+    setOk(true);
+  }
+  function dropSocket() {
+    const ws = mq.ws;
+    mq.ws = null;
+    if (ws) { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; try { ws.close(); } catch (e) { /* 已关 */ } }
+    setOk(false);
+    if (mq.want) setTimeout(connectLoop, 300);
+  }
+  function feed(chunk) {
+    let b = chunk;
+    if (mq.buf.length) { b = new Uint8Array(mq.buf.length + chunk.length); b.set(mq.buf); b.set(chunk, mq.buf.length); }
+    let off = 0;
+    while (b.length - off >= 2) {
+      let mul = 1, len = 0, i = off + 1, byte = 0, whole = true;
+      do {
+        if (i >= b.length) { whole = false; break; }
+        byte = b[i++]; len += (byte & 127) * mul; mul *= 128;
+      } while (byte & 128);
+      if (!whole || b.length < i + len) break;          // 还没收全，等下一段
+      handle(b[off], b.subarray(i, i + len));
+      off = i + len;
+    }
+    mq.buf = off < b.length ? b.slice(off) : new Uint8Array(0);
+  }
+  function handle(h, body) {
+    const type = h >> 4;
+    if (type === 3) {                                  // PUBLISH
+      const qos = (h >> 1) & 3;
+      const tl = (body[0] << 8) | body[1];
+      const topic = dec.decode(body.subarray(2, 2 + tl));
+      let p = 2 + tl;
+      if (qos > 0) { send(new Uint8Array([0x40, 2, body[p], body[p + 1]])); p += 2; }
+      const hs = mq.subs.get(topic);
+      if (hs) [...hs].forEach(fn => { try { fn(body.subarray(p)); } catch (e) { console.error(e); } });
+    } else if (type === 9 || type === 11) {            // SUBACK / UNSUBACK
+      const id = (body[0] << 8) | body[1];
+      const r = mq.acks.get(id);
+      if (r) { mq.acks.delete(id); r(); }
+    }
+  }
+  const nextPid = () => { mq.pid = mq.pid % 65000 + 1; return mq.pid; };
+  function sendSub(topic) {
+    const id = nextPid();
+    const p = new Promise(r => { mq.acks.set(id, r); setTimeout(() => { if (mq.acks.delete(id)) r(); }, 5000); });
+    send(packet(0x82, [id >> 8, id & 255, ...strBytes(topic), 0]));
+    return p;
+  }
+  function ensure(ms) {
+    if (mq.ok) return Promise.resolve();
+    mq.want = true;
+    connectLoop();
+    return new Promise((res, rej) => {
+      const fn = () => { clearTimeout(t); res(); };
+      const t = setTimeout(() => { const k = mq.waiters.indexOf(fn); if (k >= 0) mq.waiters.splice(k, 1); rej(new Error('offline')); }, ms || 14000);
+      mq.waiters.push(fn);
+    });
+  }
+  async function subscribe(topic, fn) {
+    let set = mq.subs.get(topic);
+    const fresh = !set;
+    if (fresh) { set = new Set(); mq.subs.set(topic, set); }
+    set.add(fn);
+    await ensure();
+    if (fresh) await sendSub(topic);
+  }
+  function unsubscribe(topic, fn) {
+    const set = mq.subs.get(topic);
+    if (!set) return;
+    set.delete(fn);
+    if (set.size) return;
+    mq.subs.delete(topic);
+    if (mq.ok) { const id = nextPid(); send(packet(0xA2, [id >> 8, id & 255, ...strBytes(topic)])); }
+  }
+  async function publish(topic, data, retain, waitMs) {
+    await ensure(waitMs);
+    const body = [...strBytes(topic), ...enc.encode(JSON.stringify(data))];
+    if (!send(packet(0x30 | (retain ? 1 : 0), body))) throw new Error('offline');
+  }
+  function probe() {                                   // 怀疑网断了：马上 ping 一下
+    if (!mq.ok || mq.pingAt > mq.lastRx) return;
+    mq.pingAt = Date.now();
+    send(PING);
+  }
+  setInterval(() => {                                  // 一直收不到东西就 ping；ping 了还没回音就当断线重连
+    if (!mq.ok) { if (mq.want && !mq.connecting) connectLoop(); return; }
+    const now = Date.now();
+    if (mq.pingAt > mq.lastRx) { if (now - mq.pingAt > 6000) dropSocket(); return; }
+    if (now - mq.lastRx > 10000) { mq.pingAt = now; send(PING); }
+  }, 1000);
+  const wake = () => { if (!mq.want) return; if (mq.ok) probe(); else connectLoop(); };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+  window.addEventListener('online', wake);
+  window.addEventListener('pageshow', wake);
+
+  /* ---------- db：一个房间一条“保留消息”，谁改谁整条重发 ---------- */
+  const docs = new Map();
+  const revOf = d => (d && d.rev) || 0;
+  function newer(a, b) {                               // 两份同时改的，大家用同一个规则挑一份
+    if (!b) return true;
+    if (!a) return false;
+    if (revOf(a) !== revOf(b)) return revOf(a) > revOf(b);
+    const ua = a.updatedAt || 0, ub = b.updatedAt || 0;
+    if (ua !== ub) return ua > ub;
+    return String(a.w || '') > String(b.w || '');
+  }
+  const same = (a, b) => !!(a && b && a.rev === b.rev && a.updatedAt === b.updatedAt && (a.w || '') === (b.w || ''));
+  const snapOf = e => { const d = e.best; return { id: e.topic.split('/').pop(), exists: !!d, data: () => (d ? JSON.parse(JSON.stringify(d)) : undefined) }; };
+  function entry(path) {
+    const topic = PREFIX + 'd/' + path;
+    let e = docs.get(topic);
+    if (!e) {
+      // chain：自己发出去、还没收到回音的几份；base：chain 是在哪一份上改的；epoch：被别人进度覆盖过几次
+      e = { topic, best: null, fns: new Set(), sub: null, chain: [], base: null, epoch: 0, recon: null, rxUp: undefined, touched: 0 };
+      e.onMsg = payload => {
+        if (!payload.length) return;
+        let d = null;
+        try { d = JSON.parse(dec.decode(payload)); } catch (x) { return; }
+        if (!d || typeof d !== 'object' || Array.isArray(d)) return;
+        const k = e.chain.findIndex(x => same(x, d));
+        if (k >= 0) { e.base = e.chain[k]; e.chain = e.chain.slice(k + 1); }
+        if (e.rxUp !== undefined) { if (!e.rxUp || newer(d, e.rxUp)) e.rxUp = d; return; }
+        if (!newer(d, e.best)) return;
+        e.best = d;
+        fire(e);
+      };
+      docs.set(topic, e);
+    }
+    e.touched = Date.now();
+    return e;
+  }
+  function fire(e, reset) {
+    const s = snapOf(e);
+    if (reset) s.reset = true;
+    [...e.fns].forEach(fn => setTimeout(() => { try { fn(s); } catch (x) { console.error(x); } }, 0));
+  }
+  function ready(e) {
+    if (!e.sub) {
+      e.sub = (async () => {
+        await subscribe(e.topic, e.onMsg);
+        const t0 = Date.now();
+        while (!e.best && Date.now() - t0 < 1500) await sleep(50);   // 保留消息一般紧跟着就到
+      })();
+      e.sub.catch(() => { e.sub = null; });
+    }
+    return e.sub;
+  }
+  async function reconcile(e) {                        // 刚重连：看服务器上是哪一份，决定补发自己的还是跟上别人的
+    e.rxUp = null;
+    await sleep(1600);
+    const R = e.rxUp;
+    e.rxUp = undefined;
+    if (!e.chain.length) { if (R && newer(R, e.best)) { e.best = R; fire(e); } return; }
+    const last = e.chain[e.chain.length - 1];
+    const serverHasOurBase = !R || (e.base && (same(R, e.base) || newer(e.base, R))) || e.chain.some(x => same(x, R));
+    if (serverHasOurBase) { await publish(e.topic, last, true, 3000).catch(() => {}); return; }
+    e.chain = []; e.base = null; e.epoch++;           // 别人已经往前打了：自己没送到的那几步作废
+    e.best = R;
+    fire(e, true);
+  }
+  mq.statusFns.add(ok => {
+    if (!ok) return;
+    for (const e of docs.values()) {
+      if (e.chain.length && !e.recon) e.recon = reconcile(e).finally(() => { e.recon = null; });
+    }
+  });
+  setInterval(() => {                                   // 不用的房间退订
+    for (const e of [...docs.values()]) {
+      if (e.fns.size || e.chain.length || Date.now() - e.touched < 30000) continue;
+      unsubscribe(e.topic, e.onMsg);
+      docs.delete(e.topic);
+    }
+  }, 10000);
+  function doc(path) {
+    return Object.freeze({
+      id: path.split('/').pop(), path,
+      get: async () => {
+        const e = entry(path);
+        await ready(e);
+        if (e.recon) await e.recon;
+        const s = snapOf(e), ep = e.epoch;
+        return { id: s.id, exists: s.exists, data: () => { const d = s.data(); if (d) d.__ep = ep; return d; } };
+      },
+      set: async data => {
+        const e = entry(path);
+        const ep = data ? data.__ep : undefined;
+        await ready(e);
+        await ensure(5000);
+        if (e.recon) await e.recon;
+        if (ep !== undefined && ep !== e.epoch) throw new Error('stale');   // 改的是作废前的版本
+        const d = JSON.parse(JSON.stringify(data));
+        delete d.__ep;
+        const base = e.best;
+        await publish(e.topic, d, true, 5000);
+        if (!e.chain.length) e.base = base;
+        e.chain.push(d);
+        e.best = d;
+        fire(e);
+        setTimeout(() => { if (e.chain.includes(d)) probe(); }, 4000);
+      },
+      acquire: async () => ({ acquired: true }),
+      onSnapshot: (next, err) => {
+        const e = entry(path);
+        e.fns.add(next);
+        ready(e).then(() => { if (e.best && e.fns.has(next)) next(snapOf(e)); }, () => { /* 连上后会自动补订 */ });
+        return () => { e.fns.delete(next); e.touched = Date.now(); };
+      },
+    });
+  }
+  const db = Object.freeze({ doc });
+
+  /* ---------- user ---------- */
+  const user = Object.freeze({
+    id: async () => uid,
+    can: async () => true,
+    profiles: async ids => {
+      const out = {};
+      [].concat(ids).forEach(i => { const n = i === uid ? getName() : names.get(i); if (n) out[i] = { id: i, name: n, isMe: i === uid }; });
+      return out;
+    },
+  });
+
+  /* ---------- room：谁在线（心跳）+ 小消息 ---------- */
+  function joinRoom(name) {
+    const base = PREFIX + 'r/' + name;
+    const hbTopic = base + '/hb';
+    const peers = new Map();
+    const peerFns = new Set(), held = [];
+    let presence = {}, alive = true, lastHb = 0;
+    const list = () => [...peers.values()].map(p => ({ peer: p.tab, by: p.by, name: p.name, presence: p.presence, isMe: p.by === uid, sameTab: false }));
+    const emitPeers = () => { const ps = list(); [...peerFns].forEach(h => { try { h({ peers: ps }); } catch (e) { console.error(e); } }); };
+    const hb = extra => {
+      lastHb = Date.now();
+      return publish(hbTopic, Object.assign({ tab: TAB, by: uid, name: getName(), presence, t: Date.now() }, extra || {}), false, 3000);
+    };
+    const onHb = payload => {
+      let m = null;
+      try { m = JSON.parse(dec.decode(payload)); } catch (e) { return; }
+      if (!m || m.tab === TAB || typeof m.by !== 'string' || typeof m.tab !== 'string') return;
+      if (m.name) names.set(m.by, String(m.name).slice(0, 8));
+      if (m.bye) { if (peers.delete(m.tab)) emitPeers(); return; }
+      const had = peers.has(m.tab);
+      peers.set(m.tab, { tab: m.tab, by: m.by, name: m.name, presence: m.presence || {}, seen: Date.now() });
+      if (m.hello && alive && Date.now() - lastHb > 600) hb().catch(() => {});
+      if (!had) emitPeers();
+    };
+    const up = ok => { if (ok && alive) hb({ hello: 1 }).catch(() => {}); };
+    mq.statusFns.add(up);
+    subscribe(hbTopic, onHb).then(() => { if (alive) return hb({ hello: 1 }); }).catch(() => { /* 连上后补 */ });
+    const iv = setInterval(() => {
+      if (!alive) return;
+      if (mq.ok && Date.now() - lastHb > 4000) hb().catch(() => {});
+      let gone = false;
+      for (const [k, p] of peers) if (Date.now() - p.seen > 12000) { peers.delete(k); gone = true; }
+      if (gone) emitPeers();
+    }, 1000);
+    return Object.freeze({
+      name,
+      emit: async (topic, data) => publish(base + '/e/' + topic, { tab: TAB, by: uid, data }, false, 3000),
+      on: (topic, h) => {
+        const t = base + '/e/' + topic;
+        const fn = payload => {
+          let m = null;
+          try { m = JSON.parse(dec.decode(payload)); } catch (e) { return; }
+          if (m) h({ topic, data: m.data, by: m.by, isMe: m.by === uid, sameTab: m.tab === TAB });
+        };
+        held.push([t, fn]);
+        subscribe(t, fn).catch(() => { /* 连上后补 */ });
+        return () => unsubscribe(t, fn);
+      },
+      presence: async patch => { presence = Object.assign({}, presence, patch); if (mq.ok) await hb(); },
+      peers: () => list(),
+      onPeers: h => { peerFns.add(h); setTimeout(() => { if (peerFns.has(h)) h({ peers: list() }); }, 0); return () => peerFns.delete(h); },
+      leave: async () => {
+        if (!alive) return;
+        alive = false;
+        clearInterval(iv);
+        mq.statusFns.delete(up);
+        try { if (mq.ok) await publish(hbTopic, { tab: TAB, by: uid, bye: 1 }, false, 1000); } catch (e) { /* 走了就走了 */ }
+        unsubscribe(hbTopic, onHb);
+        held.forEach(([t, fn]) => unsubscribe(t, fn));
+      },
+    });
+  }
+  const room = Object.freeze({ join: async name => joinRoom(name) });
+
+  /* ---------- 掉线提示条 ---------- */
+  let bannerTimer = null;
+  function banner() {
+    let el = document.getElementById('netBanner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'netBanner'; el.hidden = true; el.setAttribute('role', 'status');
+      el.textContent = '联机断了，正在重新连接…';
+      el.style.cssText = 'position:fixed;left:50%;top:calc(58px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:45;background:#b3261e;color:#fff;padding:7px 12px;border-radius:10px;font:13px/1.3 system-ui,sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.25);white-space:nowrap';
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+  mq.statusFns.add(ok => {
+    clearTimeout(bannerTimer);
+    if (ok) { const el = document.getElementById('netBanner'); if (el) el.hidden = true; return; }
+    bannerTimer = setTimeout(() => { if (!mq.ok && [...docs.values()].some(e => e.fns.size)) banner().hidden = false; }, 1500);
+  });
+
+  window.__gzNet = Object.freeze({
+    uid, getName, setName,
+    connect: ms => ensure(ms),
+    online: () => mq.ok,
+    broker: () => BROKERS[mq.idx],
+    _debug: Object.freeze({ kill() { if (mq.ws) mq.ws.close(); }, halfDead(on) { mq.dead = !!on; }, get mq() { return mq; }, get docs() { return docs; } }),
+  });
+  window.claude = Object.freeze({ use: async cap => (cap === 'db' ? db : cap === 'user' ? user : cap === 'room' ? room : null) });
+})();
+</script>
+<style>
 /* 版式：一屏牌桌。上：标题栏；中：深蓝台呢（对家在上、上下家在两侧、出牌区居中）；下：自己的分和手牌。
    配色取自芒市饭馆墙上那块蓝底黄字的规则板。 */
 :root {
@@ -69,7 +465,17 @@ button { font: inherit; color: inherit; }
 .bar .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; justify-content: flex-end; }
 .pill { font-size: 12px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--page-mute); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pill strong { color: var(--page-ink); font-weight: 700; }
-.pill.room { border-color: var(--gold); color: var(--page-ink); }
+.pill.room { border-color: var(--gold); color: var(--page-ink); cursor: pointer; }
+.icon-btn.net { border-color: var(--gold); color: var(--title); }
+#myName { letter-spacing: .02em; width: 9em; font-size: 17px; }
+.invite { display: grid; gap: 6px; margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--gold); border-radius: 12px; }
+.invite input[type="text"] { width: 100%; box-sizing: border-box; font-size: 13px; letter-spacing: 0; font-weight: 400; }
+@media (max-width: 440px) {
+  .has-net #handNo { display: none; }
+  .has-net .bar .meta { gap: 5px; }
+  .has-net .pill { padding: 4px 7px; }
+  .has-net .icon-btn { padding: 0 10px; }
+}
 .icon-btn { border: 1px solid var(--line); background: transparent; color: var(--page-ink); border-radius: 10px; height: 34px; padding: 0 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .icon-btn:focus-visible, .btn:focus-visible, .card:focus-visible, .seat-btn:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 
@@ -216,8 +622,6 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
-#mpBtn, #leaveBtn { display: none !important; }
-a.btn { text-decoration: none; display: inline-block; }
 </style>
 
 <div id="app">
@@ -227,6 +631,7 @@ a.btn { text-decoration: none; display: inline-block; }
       <span class="pill room" id="roomPill" hidden></span>
       <span class="pill" id="handNo">第1把</span>
       <span class="pill" id="tally">我们 <strong>0</strong> : <strong>0</strong> 对方</span>
+      <button class="icon-btn net" id="netBtn" type="button" hidden>联机</button>
       <button class="icon-btn" id="menuBtn" type="button">菜单</button>
     </div>
   </header>
@@ -256,7 +661,6 @@ a.btn { text-decoration: none; display: inline-block; }
     <div class="row">
       <button class="btn primary" id="newBtn" type="button">新开一局（和电脑）</button>
       <button class="btn" id="mpBtn" type="button">和朋友打</button>
-      <a class="btn" href="lianxi.html">去练习版（有提示）</a>
       <button class="btn" id="rulesBtn" type="button">规则</button>
       <button class="btn ghost" id="leaveBtn" type="button" hidden>离开房间</button>
     </div>
@@ -686,6 +1090,8 @@ function botShed(x) {
 /* ================= 页面状态 ================= */
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const NET = window.__gzNet || null;                  // 网站版的联机通道（在 Claude 里打开时没有）
+if (NET) document.documentElement.classList.add('has-net');
 const holdMs = () => Math.max(60, Math.min(3200, Math.round(Number(SET.speed) * 1.6)));
 const thinkMs = st => {                              // 电脑每张牌的思考时间，带一点随机，像真人
   const sp = Number(SET.speed);
@@ -766,6 +1172,7 @@ function render() {
   const rp = $('#roomPill');
   if (V.mp) { rp.hidden = false; rp.textContent = `房间 ${MP.code}${V.spect ? ' · 旁观' : ''}`; } else rp.hidden = true;
   $('#leaveBtn').hidden = !V.mp;
+  $('#netBtn').hidden = !NET || V.mp;
 
   for (let seat = 0; seat < 4; seat++) renderSeat(V, seat, holding);
   renderCenter(V, holding);
@@ -859,7 +1266,7 @@ function renderHand(V, holding) {
   const sig = JSON.stringify([V.spect, mine, myturn, [...legal], sel]);
   if (sig === lastHandSig) return;          // 手牌没变就不重画，免得点牌时被打断
   lastHandSig = sig;
-  if (V.spect) { el.className = 'hand'; el.innerHTML = '<div class="spect">你在旁观。房间里有空位时可以从"菜单 → 和朋友打"坐进来。</div>'; return; }
+  if (V.spect) { el.className = 'hand'; el.innerHTML = `<div class="spect">${NET ? '你在旁观。点右上角的"房间"，可以替下电脑坐进来。' : '你在旁观。房间里有空位时可以从"菜单 → 和朋友打"坐进来。'}</div>`; return; }
   el.className = 'hand' + (myturn ? ' myturn' : '');
   el.innerHTML = mine.map(c => cardEl(c, [
     myturn && !legal.has(c) ? 'off' : '',
@@ -987,6 +1394,7 @@ function onState(prev, next) {
   if (!next) return;
   if (!prev || prev.hand !== next.hand) {
     clearHold(); sel = null; lastRenderedTrick = '';
+    if (prev && next.hand > prev.hand && next.phase === 'play') closeSheet('resultSheet');   // 别人已经点了下一把
   }
   else if (next.tricks.length > prev.tricks.length) {
     const t = next.tricks[next.tricks.length - 1];
@@ -1118,6 +1526,8 @@ $('#newYes').addEventListener('click', () => startSP(true));
 $('#newNo').addEventListener('click', () => { $('#newConfirm').hidden = true; });
 $('#leaveBtn').addEventListener('click', () => { closeSheet('menuSheet'); mpExit(true); });
 $('#mpBtn').addEventListener('click', () => { closeSheet('menuSheet'); openMP(); });
+$('#netBtn').addEventListener('click', () => openMP());
+$('#roomPill').addEventListener('click', () => openMP());
 
 function syncSettingsUI() {
   document.querySelectorAll('#setLvl button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === SET.lvl)));
@@ -1165,15 +1575,41 @@ async function mpInit() {
   return MP.ok;
 }
 
-async function openMP() {
+async function openMP(code) {
   openSheet('mpSheet');
   if (MP.doc && MP.code) { renderLobby(); return; }
-  $('#mpBody').innerHTML = '<p class="mute">正在连接…</p>';
+  $('#mpBody').innerHTML = `<p class="mute">${NET ? '正在连接联机服务器…' : '正在连接…'}</p>`;
   const ok = await mpInit();
-  renderLobby(ok);
+  if (ok && NET) {
+    try { await NET.connect(15000); } catch (e) { renderNetFail(code); return; }
+  }
+  if (MP.doc && MP.code) { renderLobby(); return; }
+  renderLobby(ok, code);
+}
+function renderNetFail(code) {
+  const body = $('#mpBody');
+  if (!body) return;
+  body.innerHTML = `<p>连不上联机服务器。</p>
+    <ul><li>看看手机有没有网，换成 Wi-Fi 或流量再试。</li><li>在微信里打不开的话，点右上角"···"，选"在浏览器打开"。</li></ul>
+    <div class="row" style="margin-top:12px"><button class="btn primary" id="netRetry" type="button">再试一次</button><button class="btn ghost" data-close="mpSheet" type="button">关闭</button></div>`;
+  $('#netRetry').onclick = () => openMP(code);
+}
+function saveMyName() {
+  if (!NET) return;
+  const el = $('#myName');
+  let n = (el ? el.value : NET.getName()).trim();
+  if (!n) n = '玩家' + (10 + Math.floor(Math.random() * 90));
+  NET.setName(n);
+}
+const inviteLink = code => location.href.split('#')[0].split('?')[0] + '?room=' + code;
+function meSeat() {
+  const s = { kind: 'human', uid: MP.uid };
+  const n = NET ? NET.getName() : '';
+  if (n) s.name = n;
+  return s;
 }
 
-function renderLobby(okArg) {
+function renderLobby(okArg, code) {
   const body = $('#mpBody');
   if (!body) return;
   const ok = okArg === undefined ? MP.ok : okArg;
@@ -1189,12 +1625,20 @@ function renderLobby(okArg) {
     return;
   }
   if (!MP.doc) {
-    body.innerHTML = `<p class="mute">一个人开房间，把房间号发给朋友；朋友在这里输入房间号加入。</p>
+    const nameRow = NET ? `<div class="row" style="margin-bottom:12px"><label for="myName">你的名字</label><input type="text" id="myName" maxlength="8" placeholder="比如 阿强" autocomplete="off" value="${esc(NET.getName())}"></div>` : '';
+    if (NET && code) {
+      body.innerHTML = `${nameRow}<p>朋友叫你进 <b>${esc(code)}</b> 号房间。</p>
+        <div class="row" style="margin:12px 0"><button class="btn primary" id="mpJoinInv" type="button">进房间</button><button class="btn ghost" data-close="mpSheet" type="button">先不进</button></div>
+        <p class="mute">进去后会自动坐到空位上，想换位置可以再点别的座位。</p>`;
+      $('#mpJoinInv').onclick = () => { saveMyName(); guard(() => mpEnter(code)); };
+      return;
+    }
+    body.innerHTML = `${nameRow}<p class="mute">${NET ? '开个房间，把邀请链接发到微信群，朋友点开就能进来；也可以把 4 位房间号告诉他们，在这里输入加入。' : '一个人开房间，把房间号发给朋友；朋友在这里输入房间号加入。'}</p>
       <div class="row" style="margin:12px 0"><button class="btn primary" id="mpCreate" type="button">开房间</button></div>
       <div class="row"><input type="text" id="roomCode" inputmode="numeric" maxlength="4" placeholder="房间号" autocomplete="off" aria-label="房间号"><button class="btn" id="mpJoin" type="button">加入</button></div>
       <div class="row" style="margin-top:14px"><button class="btn ghost" data-close="mpSheet" type="button">关闭</button></div>`;
-    $('#mpCreate').onclick = () => guard(mpCreate);
-    $('#mpJoin').onclick = () => { const code = ($('#roomCode').value || '').trim(); if (!/^\d{4}$/.test(code)) { toast('房间号是 4 位数字'); return; } guard(() => mpEnter(code)); };
+    $('#mpCreate').onclick = () => { saveMyName(); guard(mpCreate); };
+    $('#mpJoin').onclick = () => { const code = ($('#roomCode').value || '').trim(); if (!/^\d{4}$/.test(code)) { toast('房间号是 4 位数字'); return; } saveMyName(); guard(() => mpEnter(code)); };
     return;
   }
   const d = MP.doc;
@@ -1215,13 +1659,16 @@ function renderLobby(okArg) {
     } else if (seated || s.was === MP.uid) {
       if (s.kind === 'human' && s.uid !== MP.uid) acts += `<button class="seat-btn" data-take="${i}" type="button">让电脑接手</button>`;
       if (s.kind === 'bot' && s.was === MP.uid) acts += `<button class="seat-btn" data-back="${i}" type="button">坐回去</button>`;
-    }
+    } else if (NET && s.kind === 'bot' && !s.was) acts += `<button class="seat-btn" data-takebot="${i}" type="button">替电脑坐</button>`;
     return `<div class="seat-row"><span class="no">${i + 1}号</span><span class="team">${team}</span><span class="occ ${cls}">${esc(occ)}${online}</span>${acts}</div>`;
   }).join('');
   const playing = d.status === 'play';
   body.innerHTML = `<div class="row" style="justify-content:space-between;align-items:flex-end">
       <div><div class="mute">房间号</div><div class="code" id="codeText">${esc(d.code)}</div></div>
       <button class="btn" id="copyCode" type="button">复制房间号</button></div>
+    ${NET ? `<div class="invite"><div class="row"><button class="btn primary" id="copyLink" type="button">复制邀请链接</button>${navigator.share ? '<button class="btn" id="shareLink" type="button">分享…</button>' : ''}</div>
+      <span class="mute">发到微信群，朋友点开链接就进这个房间。</span>
+      <input type="text" id="linkBox" readonly value="${esc(inviteLink(d.code))}" aria-label="邀请链接"></div>` : ''}
     <p class="mute" style="margin-top:8px">1号和3号一队，2号和4号一队，按 1→2→3→4 出牌。${playing ? '这桌已经开打了。' : '人齐了就开始，空位会由电脑补上。'}</p>
     <div class="row" style="margin-top:8px"><span class="mute">每人每手出牌时间</span>${isHost ? `<div class="seg" id="mpTimer" role="group" aria-label="出牌时间"><button type="button" data-v="15" aria-pressed="${(d.timer || 30) === 15}">15 秒</button><button type="button" data-v="30" aria-pressed="${(d.timer || 30) === 30}">30 秒</button></div>` : `<b>${d.timer || 30} 秒</b><span class="mute">（房主定）</span>`}</div>
     <div class="seats">${seatsHTML}</div>
@@ -1234,6 +1681,17 @@ function renderLobby(okArg) {
   body.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => guard(() => mpSeatKind(Number(b.dataset.clear), 'empty')));
   body.querySelectorAll('[data-take]').forEach(b => b.onclick = () => guard(() => mpTakeover(Number(b.dataset.take))));
   body.querySelectorAll('[data-back]').forEach(b => b.onclick = () => guard(() => mpReclaim(Number(b.dataset.back))));
+  body.querySelectorAll('[data-takebot]').forEach(b => b.onclick = () => guard(() => mpTakeBot(Number(b.dataset.takebot))));
+  const cl = $('#copyLink');
+  if (cl) cl.onclick = () => {
+    const link = inviteLink(d.code);
+    const fallback = () => { const lb = $('#linkBox'); if (lb) { lb.focus(); lb.select(); } toast('长按下面的链接复制'); };
+    try { navigator.clipboard.writeText(link).then(() => toast('已复制邀请链接，发给朋友吧'), fallback); } catch (e) { fallback(); }
+  };
+  const sh = $('#shareLink');
+  if (sh) sh.onclick = () => { navigator.share({ title: '芒市拱猪', text: `来打拱猪，进我的房间 ${d.code}`, url: inviteLink(d.code) }).catch(() => {}); };
+  const lb = $('#linkBox');
+  if (lb) lb.onclick = () => lb.select();
   const st = $('#mpStart'); if (st) st.onclick = () => guard(mpStart);
   const mt = $('#mpTimer'); if (mt) mt.onclick = e => { const b = e.target.closest('button'); if (b) guard(() => mpSetTimer(Number(b.dataset.v))); };
   const bk = $('#mpBack'); if (bk) bk.onclick = () => { closeSheet('mpSheet'); MODE = 'mp'; render(); };
@@ -1271,6 +1729,7 @@ async function mpWrite(mutate, lock) {
     if (!next) return null;
     next.rev = ((cur && cur.rev) || 0) + 1;
     next.updatedAt = Date.now();
+    next.w = MP.tab;                                   // 两人同时改时，大家按同一个规则挑一份
     await MP.ref.set(next);
     acceptDoc(next);
     if (MP.nroom) MP.nroom.emit('tick', { rev: next.rev }).catch(() => {});
@@ -1287,7 +1746,7 @@ async function mpCreate() {
     if (snap.exists && Date.now() - ((snap.data() || {}).updatedAt || 0) < 12 * 3600e3) continue;
     await ref.set({
       code, host: MP.uid, lvl: SET.lvl, timer: Number(SET.timer) || 30, status: 'lobby', rev: 1, updatedAt: Date.now(), game: null,
-      seats: [{ kind: 'human', uid: MP.uid }, { kind: 'empty', uid: null }, { kind: 'empty', uid: null }, { kind: 'empty', uid: null }],
+      seats: [meSeat(), { kind: 'empty', uid: null }, { kind: 'empty', uid: null }, { kind: 'empty', uid: null }],
     });
     await mpEnter(code);
     return;
@@ -1303,7 +1762,7 @@ async function mpEnter(code) {
   MP.code = code; MP.ref = ref; MP.doc = null;
   acceptDoc(snap.data());
   MP.unsub = ref.onSnapshot(s => {
-    if (s.exists) acceptDoc(s.data());
+    if (s.exists) acceptDoc(s.data(), s.reset);
   }, () => { toast('和房间的同步断了，请重新进入房间'); });
   if (MP.room) {
     try {
@@ -1314,13 +1773,29 @@ async function mpEnter(code) {
       nr.presence({ seat: MP.mySeat }).catch(() => {});
     } catch (e) { MP.nroom = null; }
   }
+  if (NET) {
+    saveJSON('gzd-room', { code, t: Date.now() });   // 刷新或微信切回来时自动回到这个房间
+    if (MP.doc && MP.doc.status === 'lobby' && MP.mySeat === null) {
+      const i = MP.doc.seats.findIndex(s => s.kind === 'empty');
+      if (i >= 0) { try { await mpSit(i); } catch (e) { /* 自己点座位 */ } }
+    }
+    // 开打后才进来：先让他看到可以替下哪个电脑
+    if (MP.doc && MP.doc.status === 'play' && MP.mySeat === null && MP.doc.seats.some(s => s.kind === 'bot' && !s.was)) openSheet('mpSheet');
+  }
   renderLobby();
 }
 
-function acceptDoc(d) {
+function acceptDoc(d, force) {                       // force：断网时自己的几步没送到，回到大家手上的那一份
   if (!d || (MP.code && d.code !== MP.code)) return;
-  if (MP.doc && (d.rev || 0) < (MP.doc.rev || 0)) return;
-  if (MP.doc && d.rev === MP.doc.rev && d.updatedAt === MP.doc.updatedAt) return;
+  if (force && MP.doc) toast('网断过一下，已经和大家对齐');
+  if (MP.doc && !force) {
+    const a = d.rev || 0, b = MP.doc.rev || 0;
+    if (a < b) return;
+    if (a === b) {
+      const ua = d.updatedAt || 0, ub = MP.doc.updatedAt || 0;
+      if (ua < ub || (ua === ub && String(d.w || '') <= String(MP.doc.w || ''))) return;
+    }
+  }
   const prevGame = MP.doc && MP.doc.game ? MP.doc.game : null;
   MP.doc = clone(d);
   const idx = MP.doc.seats.findIndex(s => s.kind === 'human' && s.uid === MP.uid);
@@ -1331,7 +1806,7 @@ function acceptDoc(d) {
       MODE = 'mp'; clearHold(); resultShownKey = null; lastRenderedTrick = '';
       closeSheet('mpSheet'); closeSheet('resultSheet');
       onState(null, MP.doc.game);
-    } else onState(prevGame && prevGame.hand <= MP.doc.game.hand ? prevGame : null, MP.doc.game);
+    } else onState(!force && prevGame && prevGame.hand <= MP.doc.game.hand ? prevGame : null, MP.doc.game);
   }
   if (!$('#mpSheet').hidden) renderLobby();
 }
@@ -1341,7 +1816,7 @@ async function resolveNames() {
   const ids = MP.doc.seats.filter(s => s.kind === 'human' && s.uid).map(s => s.uid);
   let ps = {};
   try { if (MP.user && ids.length) ps = await MP.user.profiles(ids); } catch (e) { ps = {}; }
-  MP.names = MP.doc.seats.map(s => s.kind === 'bot' ? '电脑' : s.kind === 'empty' ? '空位' : s.uid === MP.uid ? '你' : ((ps[s.uid] && ps[s.uid].name) || '朋友'));
+  MP.names = MP.doc.seats.map(s => s.kind === 'bot' ? '电脑' : s.kind === 'empty' ? '空位' : s.uid === MP.uid ? '你' : (s.name || (ps[s.uid] && ps[s.uid].name) || '朋友'));
   if (MODE === 'mp') render();
   if (!$('#mpSheet').hidden) renderLobby();
 }
@@ -1352,10 +1827,22 @@ async function mpSit(i) {
     const s = cur.seats[i];
     if (s.kind === 'human' && s.uid !== MP.uid) { toast('这个座位有人了'); return null; }
     cur.seats = cur.seats.map(x => (x.kind === 'human' && x.uid === MP.uid) ? { kind: 'empty', uid: null } : x);
-    cur.seats[i] = { kind: 'human', uid: MP.uid };
+    cur.seats[i] = meSeat();
     return cur;
   }, true);
   if (MP.nroom) MP.nroom.presence({ seat: MP.mySeat }).catch(() => {});
+}
+async function mpTakeBot(i) {                          // 开打后才来的朋友：替下一个电脑
+  await mpWrite(cur => {
+    if (!cur || cur.status !== 'play' || !cur.game) return null;
+    const s = cur.seats[i];
+    if (!s || s.kind !== 'bot' || s.was || cur.seats.some(x => x.kind === 'human' && x.uid === MP.uid)) return null;
+    cur.seats[i] = meSeat();
+    cur.game.seats[i] = { kind: 'human', uid: MP.uid };
+    return cur;
+  }, true);
+  if (MP.nroom) MP.nroom.presence({ seat: MP.mySeat }).catch(() => {});
+  if (MP.mySeat !== null) { closeSheet('mpSheet'); render(); }
 }
 async function mpSeatKind(i, kind) {
   await mpWrite(cur => {
@@ -1432,7 +1919,7 @@ async function mpReclaim(i) {
     const s = cur.seats[i];
     if (s.kind !== 'bot' || s.was !== MP.uid) return null;
     cur.seats = cur.seats.map(x => (x.kind === 'human' && x.uid === MP.uid) ? { kind: 'bot', uid: null, was: MP.uid } : x);
-    cur.seats[i] = { kind: 'human', uid: MP.uid };
+    cur.seats[i] = meSeat();
     cur.game.seats = cur.seats.map(x => clone(x));
     return cur;
   }, true);
@@ -1476,6 +1963,7 @@ async function mpExit(freeSeat) {
   }
   mpDetach();
   MP.doc = null; MP.code = null; MP.ref = null; MP.mySeat = null;
+  if (NET) saveJSON('gzd-room', null);
   clearTimeout(botTimer);
   if (MODE === 'mp') {
     MODE = 'sp'; clearHold(); resultShownKey = null; lastRenderedTrick = '';
@@ -1483,6 +1971,36 @@ async function mpExit(freeSeat) {
     if (!SP) SP = newMatch(clone(SP_SEATS));
     onState(null, SP);
   }
+}
+
+/* 网站版：带 ?room=房间号 打开就进那个房间；刷新、微信切回来时自动回到原来的房间 */
+function netStartup() {
+  const q = new URLSearchParams(location.search).get('room');
+  const qc = q && /^\d{4}$/.test(q) ? q : null;
+  const saved = loadJSON('gzd-room', null);
+  const sc = saved && /^\d{4}$/.test(saved.code) && Date.now() - (saved.t || 0) < 12 * 3600e3 ? saved.code : null;
+  if (qc && qc !== sc) { openMP(qc); return; }
+  const code = qc || sc;
+  if (code) rejoin(code, !!qc);
+}
+async function rejoin(code, fromLink) {
+  try {
+    if (!(await mpInit())) return;
+    await NET.connect(15000);
+    const snap = await MP.db.doc('rooms/' + code).get();
+    const d = snap.exists ? snap.data() : null;
+    const mine = !!(d && d.seats.some(s => (s.kind === 'human' && s.uid === MP.uid) || s.was === MP.uid));
+    if (!d || !mine || Date.now() - (d.updatedAt || 0) > 6 * 3600e3) {
+      saveJSON('gzd-room', null);
+      if (fromLink) openMP(code);
+      return;
+    }
+    await guard(() => mpEnter(code));
+    if (!MP.doc) return;
+    const back = MP.doc.seats.findIndex(s => s.kind === 'bot' && s.was === MP.uid);
+    if (MP.mySeat === null && back >= 0 && MP.doc.status === 'play') await guard(() => mpReclaim(back));
+    if (MP.doc.status === 'lobby') { openSheet('mpSheet'); renderLobby(); }
+  } catch (e) { if (fromLink) openMP(code); }
 }
 
 /* ================= 启动 ================= */
@@ -1497,6 +2015,7 @@ function start(data) {
 try { if (window.claude && window.claude.hot && window.claude.hot.snapshot) window.claude.hot.snapshot(() => ({ sp: SP })); } catch (e) { /* 没有热更新也能玩 */ }
 const hot = window.claude && window.claude.hot;
 if (hot && hot.ready) hot.ready(start); else start((hot && hot.data) || {});
+if (NET) netStartup();
 
 window.__gz = { suitOrderFor, get clock() { return clock; }, timerSec, get renders() { return renderCount; }, get SP() { return SP; }, get MP() { return MP; }, view, legalMoves, applyMove, botChoose, newMatch, nextHand, humanPlay, SET };
 })();
