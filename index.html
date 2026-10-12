@@ -686,9 +686,15 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
     <h2>菜单</h2>
     <div class="row">
       <button class="btn primary" id="newBtn" type="button">新开一局（和电脑）</button>
+      <button class="btn" id="surrBtn" type="button" hidden>这把投降</button>
       <button class="btn" id="mpBtn" type="button">和朋友打</button>
       <button class="btn" id="rulesBtn" type="button">规则</button>
       <button class="btn ghost" id="leaveBtn" type="button" hidden>离开房间</button>
+    </div>
+    <div class="row" id="surrConfirm" hidden style="margin-top:10px">
+      <span class="mute" id="surrText"></span>
+      <button class="btn primary" id="surrYes" type="button">确定投降</button>
+      <button class="btn ghost" id="surrNo" type="button">算了</button>
     </div>
     <div class="row" id="newConfirm" hidden style="margin-top:10px">
       <span class="mute">这局会从第一把重新开始，确定吗？</span>
@@ -727,6 +733,7 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
       <li>分牌全部出完这把就结束。四个人里分最高的那个人，他们那队输。</li>
       <li>一个人收齐 13 张红桃是<b>小满贯</b>，直接赢；连猪、羊、波也都收了是<b>大满贯</b>，罚双倍。</li>
       <li>输了罚几份，看输的那队里分最高的人：3000 以内罚 1 份，3000 起 2 份，6000 起 3 份，9000 起 4 份。队友一起受罚。所以赢的时候要把分堆到对方一个人身上，牌差的时候少输就是赢。</li>
+      <li>牌实在太差可以<b>投降</b>（菜单里）：投降的人把剩下没出的分牌全吃下，这把这队输，按吃完后的分算罚几份。和朋友打时，队友在线要他同意。</li>
     </ul>
     <h3>对战版的规定</h3>
     <ul>
@@ -740,6 +747,14 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
 
 <div class="sheet" id="resultSheet" hidden>
   <div class="panel" role="dialog" aria-label="这把结果" id="resultBody"></div>
+</div>
+
+<div class="sheet" id="surrAskSheet" hidden>
+  <div class="panel" role="dialog" aria-label="队友想投降">
+    <h2>队友想投降</h2>
+    <p id="surrAskText"></p>
+    <div class="row" style="margin-top:12px"><button class="btn primary" id="surrAgree" type="button">同意投降</button><button class="btn" id="surrRefuse" type="button">不同意，接着打</button></div>
+  </div>
 </div>
 
 <div class="sheet" id="penaltySheet" hidden>
@@ -812,7 +827,7 @@ function startHand(st0, leader, first) {
   return Object.assign({}, st0, {
     v: (st0.v || 0) + 1, hand: (st0.hand || 0) + 1, hands, trick: [], turn: leader, leader0: leader,
     tricks: [], pts: [0, 0, 0, 0], hasbo: [false, false, false, false], hearts: [0, 0, 0, 0], got: [[], [], [], []],
-    phase: 'play', result: null, first7: !!first,
+    phase: 'play', result: null, first7: !!first, surrBy: null,
   });
 }
 function legalMoves(st, p) {
@@ -866,8 +881,10 @@ function finishHand(st) {
   st.phase = 'end';
   const sc = [0, 1, 2, 3].map(p => scoreOf(st, p));
   let res;
-  const slammer = st.hearts.findIndex(h => h === 13);
-  if (slammer >= 0) {
+  const surr = st.surrBy !== null && st.surrBy !== undefined;
+  const slammer = surr ? -1 : st.hearts.findIndex(h => h === 13);
+  if (surr) res = { winTeam: 1 - (st.surrBy & 1), kind: 'surrender', surrBy: st.surrBy };   // 投降：这队输，不算满贯
+  else if (slammer >= 0) {
     const grand = BOMBS.every(b => st.got[slammer].includes(b));
     res = { winTeam: slammer & 1, kind: grand ? 'grand' : 'small', slammer };
   } else {
@@ -888,6 +905,32 @@ function finishHand(st) {
   }
   st.result = res;
   st.log = (st.log || []).concat([{ hand: st.hand, winTeam: res.winTeam, kind: res.kind, pen: res.pen }]).slice(-40);
+}
+// 投降：投降的人把还没出的分牌（红桃、猪、羊、波）全吃下，这把他们这队输
+function surrenderPreview(st, p) {
+  const rest = [];
+  for (let q = 0; q < 4; q++) for (const c of st.hands[q]) if (PUBLIC.has(c)) rest.push(c);
+  for (const [, c] of st.trick) if (PUBLIC.has(c)) rest.push(c);
+  const add = rest.reduce((a, c) => a + PTS[c], 0);
+  const bo = st.hasbo[p] || rest.includes(BO);
+  const sc = [0, 1, 2, 3].map(q => (q === p ? (st.pts[p] + add) * (bo ? 8 : 1) : scoreOf(st, q)));
+  const team = p & 1, m = Math.max(sc[team], sc[team + 2]);
+  return { rest, add, score: sc[p], bo, pen: penTier(m), teamMax: m };
+}
+function surrender(st0, p) {
+  if (!st0 || st0.phase !== 'play') return st0;
+  const st = clone(st0);
+  for (const c of surrenderPreview(st, p).rest) {
+    st.pts[p] += PTS[c]; st.got[p].push(c);
+    if (c === BO) st.hasbo[p] = true;
+    if (suit(c) === H) st.hearts[p]++;
+  }
+  st.hands = st.hands.map(h => h.filter(c => !PUBLIC.has(c)));
+  st.trick = [];
+  st.v++;
+  st.surrBy = p;
+  finishHand(st);
+  return st;
 }
 function nextHand(st0) {
   const r = st0.result;
@@ -1521,7 +1564,7 @@ function maybeShowResult(V, holding) {
   if (r.winTeam === null) banner = '平局';
   else if (r.winTeam === myTeam) banner = '我们赢了';
   else { banner = '我们输了'; cls = 'lose'; }
-  const slam = r.kind === 'small' ? '小满贯' : r.kind === 'grand' ? '大满贯' : '';
+  const slam = r.kind === 'small' ? '小满贯' : r.kind === 'grand' ? '大满贯' : r.kind === 'surrender' ? '投降' : '';
   const maxSc = Math.max(...r.scores);
   const order = [0, 1, 2, 3].map(pos => (V.my + pos) % 4);
   let rows = '';
@@ -1530,7 +1573,7 @@ function maybeShowResult(V, holding) {
     const sc = r.scores[seat];
     const base = st.pts[seat];
     const tm = (seat & 1) === myTeam ? '我们' : '对方';
-    const isMax = r.kind === 'normal' || r.kind === 'tie' ? sc === maxSc : seat === r.slammer;
+    const isMax = r.kind === 'surrender' ? seat === r.surrBy : r.kind === 'normal' || r.kind === 'tie' ? sc === maxSc : seat === r.slammer;
     rows += `<tr class="${isMax && r.kind !== 'small' && r.kind !== 'grand' ? 'max' : ''}"><td class="who-cell"><b>${esc(whoName(V, seat))}</b><div class="mute">${tm}</div></td>` +
       `<td><div class="got">${miniList(st.got[seat]) || '<span class="mute">没吃分</span>'}</div></td>` +
       `<td class="num">${st.hasbo[seat] ? `${base}×8=` : ''}${sc}</td></tr>`;
@@ -1538,6 +1581,7 @@ function maybeShowResult(V, holding) {
   let why = '';
   if (r.kind === 'small' || r.kind === 'grand') why = `${esc(whoName(V, r.slammer))}一个人收齐了 13 张红桃${r.kind === 'grand' ? '，连猪羊波也收了，罚双倍' : '，直接赢'}。`;
   else if (r.kind === 'tie') why = '两队的最高分一样，这把不算输赢。';
+  else if (r.kind === 'surrender') why = `${esc(whoName(V, r.surrBy))}投降了，剩下的分都算${r.surrBy === V.my && !V.spect ? '你' : '他'}的，${(r.surrBy & 1) === myTeam ? '我们' : '对方'}这队输。`;
   else why = `分最高的是${esc(whoName(V, r.scores.indexOf(maxSc)))}，${((r.scores.indexOf(maxSc)) & 1) === myTeam ? '我们' : '对方'}这队输。`;
   const pen = st.pen || [0, 0];
   if (r.winTeam !== null && r.pen) {
@@ -1669,6 +1713,7 @@ function onState(prev, next) {
     const V = view();
     if (!(next.turn === V.my && sel !== null && next.hands[V.my].includes(sel) && prev.turn === next.turn)) sel = null;
   }
+  if (prev && prev.phase === 'play' && next.phase === 'end' && next.surrBy !== null && next.surrBy !== undefined) clearHold();   // 投降：不等收牌，直接出结果
   const la = next.lastAuto;
   if (la && la.v === next.v && (!prev || prev.v !== next.v)) {
     const V = view();
@@ -1763,10 +1808,10 @@ document.addEventListener('click', e => {
   const c = e.target.closest('[data-close]');
   if (c) closeSheet(c.dataset.close);
   const sh = e.target.classList && e.target.classList.contains('sheet') ? e.target : null;
-  if (sh && sh.id !== 'resultSheet' && sh.id !== 'penaltySheet') sh.hidden = true;
+  if (sh && sh.id !== 'resultSheet' && sh.id !== 'penaltySheet' && sh.id !== 'surrAskSheet') sh.hidden = true;
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') document.querySelectorAll('.sheet:not([hidden])').forEach(s => { if (s.id !== 'resultSheet' && s.id !== 'penaltySheet') s.hidden = true; });
+  if (e.key === 'Escape') document.querySelectorAll('.sheet:not([hidden])').forEach(s => { if (s.id !== 'resultSheet' && s.id !== 'penaltySheet' && s.id !== 'surrAskSheet') s.hidden = true; });
 });
 
 let toastTimer = null;
@@ -1777,7 +1822,32 @@ function toast(msg) {
   toastTimer = setTimeout(() => { t.hidden = true; }, 2200);
 }
 
-$('#menuBtn').addEventListener('click', () => { syncSettingsUI(); $('#newConfirm').hidden = true; openSheet('menuSheet'); });
+$('#menuBtn').addEventListener('click', () => {
+  syncSettingsUI(); $('#newConfirm').hidden = true; $('#surrConfirm').hidden = true;
+  const V = view();
+  $('#surrBtn').hidden = !(V.st && V.st.phase === 'play' && !V.spect);
+  openSheet('menuSheet');
+});
+$('#surrBtn').addEventListener('click', () => {
+  const V = view();
+  if (!V.st || V.st.phase !== 'play' || V.spect) return;
+  const pv = surrenderPreview(V.st, V.my);
+  const what = pv.rest.length ? `剩下还没出的 ${pv.add} 分${pv.rest.some(c => BOMBS.includes(c)) ? '（含' + BOMBS.filter(b => pv.rest.includes(b)).map(b => BNAME[b]).join('、') + '）' : ''}全算你的` : '剩下已经没有分牌了';
+  $('#surrText').textContent = `投降的话，${what}：你 ${pv.score} 分，我们这队输，罚 ${pv.pen} 份。`;
+  $('#surrConfirm').hidden = false;
+});
+$('#surrNo').addEventListener('click', () => { $('#surrConfirm').hidden = true; });
+$('#surrYes').addEventListener('click', () => {
+  $('#surrConfirm').hidden = true;
+  closeSheet('menuSheet');
+  const V = view();
+  if (!V.st || V.st.phase !== 'play' || V.spect) return;
+  if (V.mp) { guard(mpSurrender); return; }
+  const prev = SP;
+  SP = surrender(SP, V.my);
+  saveSP();
+  onState(prev, SP);
+});
 $('#rulesBtn').addEventListener('click', () => { closeSheet('menuSheet'); openSheet('rulesSheet'); });
 $('#newBtn').addEventListener('click', () => {
   if (MODE === 'sp' && SP && SP.phase === 'play' && (SP.tricks.length || SP.hand > 1)) { $('#newConfirm').hidden = false; return; }
@@ -2099,6 +2169,7 @@ function acceptDoc(d, force) {                       // force：断网时自己�
     } else onState(!force && prevGame && prevGame.hand <= MP.doc.game.hand ? prevGame : null, MP.doc.game);
   }
   if (!$('#mpSheet').hidden) renderLobby();
+  checkSurrender();
   if (NET && MP.doc.status === 'play' && MP.mySeat === null && !MP.busy && document.visibilityState === 'visible') {
     const back = MP.doc.seats.findIndex(s => s.kind === 'bot' && s.was === MP.uid);
     if (back >= 0) guard(async () => { await mpReclaim(back); if (MP.mySeat !== null) toast('你刚才掉线了，电脑替你打了几手，现在坐回来了'); });
@@ -2191,6 +2262,50 @@ async function mpAutoMove(v, seat) {
     }, true);
   } catch (e) { /* 下一次计时再试 */ }
 }
+// 投降：队友是人又在线，先问他；队友是电脑或掉线了就直接算
+async function mpSurrender() {
+  const d = MP.doc;
+  if (!d || !d.game || MP.mySeat === null) return;
+  const me = MP.mySeat, ps = d.seats[me ^ 2];
+  const ask = ps.kind === 'human' && ps.uid && MP.online.has(ps.uid);
+  await mpWrite(cur => {
+    if (!cur || !cur.game || cur.game.phase !== 'play') return null;
+    if (ask) { cur.surr = { seat: me, hand: cur.game.hand, at: Date.now() }; return cur; }
+    cur.game = surrender(cur.game, me);
+    delete cur.surr;
+    return cur;
+  }, true);
+  if (ask) { surrAsked = d.game.hand; toast('已经问队友了，他同意就投降'); }
+}
+async function mpSurrAnswer(yes) {
+  await mpWrite(cur => {
+    const a = cur && cur.surr;
+    if (!a || !cur.game || cur.game.hand !== a.hand || cur.game.phase !== 'play' || (a.seat ^ 2) !== MP.mySeat) return null;
+    if (yes) cur.game = surrender(cur.game, a.seat);
+    else cur.surrNo = { seat: a.seat, hand: a.hand, at: Date.now() };
+    delete cur.surr;
+    return cur;
+  }, true);
+}
+let surrSeen = '', surrAsked = -1;                 // surrAsked：这台手机在第几把问过队友（刷新后不再弹旧的“不同意”）
+function checkSurrender() {
+  const d = MP.doc, sh = $('#surrAskSheet');
+  if (!sh) return;
+  const a = d && d.surr, g = d && d.game;
+  const mine = a && g && g.phase === 'play' && g.hand === a.hand && MP.mySeat !== null && (a.seat ^ 2) === MP.mySeat;
+  if (mine) {
+    const pv = surrenderPreview(g, a.seat);
+    $('#surrAskText').textContent = `${MP.names[a.seat] || '队友'}想投降：剩下没出的 ${pv.add} 分都算他的（他 ${pv.score} 分），我们这队输，罚 ${pv.pen} 份。同意吗？`;
+    sh.hidden = false;
+  } else sh.hidden = true;
+  const no = d && d.surrNo;
+  if (no && no.seat === MP.mySeat && g && g.hand === no.hand && surrAsked === no.hand) {
+    const k = no.hand + ':' + no.at;
+    if (surrSeen !== k) { surrSeen = k; toast('队友不同意投降，接着打'); }
+  }
+}
+$('#surrAgree').addEventListener('click', () => { $('#surrAskSheet').hidden = true; guard(() => mpSurrAnswer(true)); });
+$('#surrRefuse').addEventListener('click', () => { $('#surrAskSheet').hidden = true; guard(() => mpSurrAnswer(false)); });
 async function mpSetTimer(sec) {
   await mpWrite(cur => {
     if (!cur || cur.host !== MP.uid || cur.timer === sec) return null;
@@ -2245,6 +2360,7 @@ async function mpNext(hand) {
   await guard(() => mpWrite(cur => {
     if (!cur || !cur.game || cur.game.phase !== 'end' || cur.game.hand !== hand) return null;
     cur.game = nextHand(cur.game);
+    delete cur.surr;
     return cur;
   }, true));
 }
