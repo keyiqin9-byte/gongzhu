@@ -226,6 +226,64 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
 @media (max-width: 400px) { #handNo { display: none; } }
 @media (max-width: 370px) { .brand small { display: none; } }
 
+/* ---------- 牌面上的字跟着牌的大小走（平板上牌大，字也大） ---------- */
+@supports (container-type: inline-size) {
+  .card { container-type: inline-size; }
+  .card .ix { top: max(4px, 6cqi); left: max(5px, 9cqi); font-size: clamp(13px, 32cqi, 36px); }
+  .card .sx { top: calc(max(4px, 6cqi) + .95 * clamp(13px, 32cqi, 36px)); left: max(5px, 9cqi); font-size: clamp(10px, 25cqi, 28px); }
+  .card .pip { right: max(5px, 8cqi); bottom: max(3px, 5cqi); font-size: clamp(18px, 52cqi, 60px); }
+  .card .tag { left: max(4px, 7cqi); bottom: max(4px, 7cqi); font-size: clamp(10px, 16cqi, 17px); padding: .3em .4em; }
+  .card .pt { left: max(5px, 8cqi); bottom: max(5px, 8cqi); font-size: clamp(9px, 14cqi, 15px); }
+}
+/* ---------- 平板、电脑：桌上的字、分数、出的牌都放大 ---------- */
+@media (min-width: 700px) and (min-height: 600px) {
+  #app { max-width: 1100px; gap: 10px; padding-inline: 20px; }
+  .brand { font-size: 34px; }
+  .brand small { font-size: 17px; }
+  .pill { font-size: 14px; padding: 5px 11px; }
+  .icon-btn { height: 40px; font-size: 16px; padding: 0 16px; }
+  .table { grid-template-columns: minmax(130px, 1fr) minmax(240px, 2.4fr) minmax(130px, 1fr); gap: 10px; padding: 16px 14px 12px; min-height: 420px; }
+  .seat { padding: 10px 12px; gap: 6px; border-radius: 14px; }
+  .seat.n { width: min(360px, 100%); }
+  .who { font-size: 16px; gap: 7px; }
+  .who .role { font-size: 13px; padding: 2px 8px; }
+  .who .nm { font-size: 14px; }
+  .score { font-size: 28px; }
+  .cnt { font-size: 14px; }
+  .mini { font-size: 14px; padding: 4px 5px 3px; border-radius: 5px; }
+  .voids { font-size: 13px; }
+  .status { font-size: 17px; }
+  .center { min-height: 250px; }
+  .slot { width: clamp(70px, 11vmin, 112px); }
+  .hand { gap: 8px; }
+  .clock-n b { font-size: 24px; }
+  .clock-bar { width: 120px; }
+  .me-row .seat .who .nm.me-nm { font-size: 15px; }
+}
+/* 平板竖着拿：手牌两行，一行 7 张，牌大一点好点 */
+@media (min-width: 700px) and (orientation: portrait) {
+  .hand .card { flex-basis: calc((100% - 48px) / 7); max-width: 104px; }
+}
+/* 平板横着拿、电脑：手牌一行 13 张 */
+@media (min-width: 900px) and (orientation: landscape) {
+  .hand .card { flex-basis: calc((100% - 96px) / 13); max-width: 92px; }
+}
+/* 手机横着拿：高度不够，桌子压扁、手牌一行放下 */
+@media (orientation: landscape) and (max-height: 520px) {
+  #app { padding-block: 4px 6px; gap: 4px; }
+  .bar { min-height: 34px; }
+  .brand { font-size: 22px; }
+  .table { min-height: 0; padding: 6px 8px; gap: 4px; }
+  .seat { padding: 4px 7px; gap: 2px; }
+  .score { font-size: 17px; }
+  .center { min-height: 112px; }
+  .slot { width: clamp(36px, 10vh, 56px); }
+  .status { font-size: 13px; }
+  .me { gap: 2px; }
+  .hand { padding-top: 4px; gap: 4px; }
+  .hand .card { flex-basis: calc((100% - 48px) / 13); max-width: 62px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -273,6 +331,7 @@ a.btn { text-decoration: none; display: inline-block; }
       <button class="btn" id="mpBtn" type="button">和朋友打</button>
       <a class="btn" href="index.html">去对战版</a>
       <button class="btn" id="rulesBtn" type="button">规则和打法</button>
+      <button class="btn" id="recBtn" type="button">导出牌谱</button>
       <button class="btn ghost" id="leaveBtn" type="button" hidden>离开房间</button>
     </div>
     <div class="row" id="surrConfirm" hidden style="margin-top:10px">
@@ -316,6 +375,13 @@ a.btn { text-decoration: none; display: inline-block; }
       <li>一个人收齐 13 张红桃是<b>小满贯</b>，直接赢；连猪、羊、波也都收了是<b>大满贯</b>，罚双倍。</li>
       <li>输了罚几份，看输的那队里分最高的人：3000 以内罚 1 份，3000 起 2 份，6000 起 3 份，9000 起 4 份。队友一起受罚。所以赢的时候要把分堆到对方一个人身上，牌差的时候少输就是赢。</li>
       <li>牌实在太差可以<b>投降</b>（菜单里）：投降的人把剩下没出的分牌全吃下，这把这队输，按吃完后的分算罚几份。和朋友打时，队友在线要他同意。</li>
+    </ul>
+    <h3>电脑队友怎么配合你</h3>
+    <ul>
+      <li>你主动拿一门的大牌（比这门的猪、羊、波还大）吃下一墩，电脑队友轮到出牌时会接着回这门，让你把大牌走掉、把炸弹逼出来。</li>
+      <li>对方有人把出过的红桃全收了（有收满贯的苗头），电脑没这门时会垫一张红桃给你（先垫不带分的 2、3、4），把他的满贯破掉。</li>
+      <li>你在收满贯（红桃都在你手里，你还主动出过红桃），电脑会把红桃垫给你，不垫给对手。</li>
+      <li>每把打完都会记下牌谱，用来对比人和电脑的打法，一轮一轮把电脑练强。</li>
     </ul>
     <h3>打法要点（模拟几十万把得出的）</h3>
     <ol>
@@ -401,7 +467,7 @@ function startHand(st0, leader, first) {
   return Object.assign({}, st0, {
     v: (st0.v || 0) + 1, hand: (st0.hand || 0) + 1, hands, trick: [], turn: leader, leader0: leader,
     tricks: [], pts: [0, 0, 0, 0], hasbo: [false, false, false, false], hearts: [0, 0, 0, 0], got: [[], [], [], []],
-    phase: 'play', result: null, first7: !!first, surrBy: null,
+    phase: 'play', result: null, first7: !!first, surrBy: null, deal: hands.map(h => h.slice()), by: '', cut: null,
   });
 }
 function legalMoves(st, p) {
@@ -422,12 +488,13 @@ function winnerOf(trick) {
   return [bp, bc];
 }
 const scoreOf = (st, p) => st.pts[p] * (st.hasbo[p] ? 8 : 1);
-function applyMove(st0, p, c) {
+function applyMove(st0, p, c, by) {             // by：h 人出的、b 电脑、a 超时系统代出（记牌谱用）
   if (!legalMoves(st0, p).includes(c)) throw new Error('illegal move');
   const st = clone(st0);
   st.hands[p] = st.hands[p].filter(x => x !== c);
   st.trick.push([p, c]);
   st.v++;
+  st.by = (st.by || '') + (by || '?');
   if (st.trick.length < 4) { st.turn = (p + 1) % 4; return st; }
   const [w] = winnerOf(st.trick);
   for (const [, x] of st.trick) {
@@ -500,6 +567,7 @@ function surrender(st0, p) {
     if (suit(c) === H) st.hearts[p]++;
   }
   st.hands = st.hands.map(h => h.filter(c => !PUBLIC.has(c)));
+  st.cut = st.trick.map(t => t.slice());          // 投降时桌上没打完的那墩（记牌谱用）
   st.trick = [];
   st.v++;
   st.surrBy = p;
@@ -516,19 +584,26 @@ function nextHand(st0) {
 // 打法来自模拟：不喂队友、记断门、逼炸弹、护炸弹小牌、垫短门、先垫波、破满贯、条件对时主动吃波
 // 第二版按芒市牌友的意见加了：回队友先出的那门、不帮对手回牌、开 2 当"这门没了"的信号、
 // 安全时先把大牌走掉（不攒到最后门门大）、打空一门、波留给有分的对手、队友有分时替他挡波
+// 第三版读队友的意思：队友主动拿大牌吃一墩（比这门炸弹大的牌）就接着帮他回这门；对方在收红桃时，
+// 缺门就垫一张不带分的小红桃给队友破满贯；队友在收满贯就把红桃给他、不垫给对手。
+// 这些配合是给人看的约定：高手往后推演，只有明显更好时才不按约定出。
 const LEVELS = {
   easy: { mem: 'none', voids: false, flush: false, guard: false, danger: false, short: false, slamdef: true, eatbo: false, noise: 0.25,
-    ret: false, sig2: false, avoidOpp: false, cash: false, voidAll: false, boOrder: false, boShield: false, split: false },
+    ret: false, sig2: false, avoidOpp: false, cash: false, voidAll: false, boOrder: false, boShield: false, split: false,
+    cashRet: false, selfCash: false, slamIns: 0, slamSup: false },
   normal: { mem: 'none', voids: true, flush: true, guard: true, danger: false, short: true, slamdef: true, eatbo: false, noise: 0,
-    ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: false, split: false },
+    ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: false, split: false,
+    cashRet: true, selfCash: false, cashFollow: true, slamIns: 3, slamSup: true },
   hard: { mem: 'full', voids: true, flush: true, guard: true, danger: true, short: true, slamdef: true, eatbo: true, noise: 0,
-    ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: true, split: false, pimc: 24, budget: 350, shortBias: 0.7, penW: 0.35 },
+    ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: true, split: false, pimc: 24, budget: 350, shortBias: 0.7, penW: 0.35,
+    cashRet: true, selfCash: false, cashFollow: true, slamIns: 3, slamSup: true, convM: 0.5, convMcash: 0.8, convAll: false, cashBias: 0.35, cashHigh: 1.8 },
 };
 LEVELS.roll = Object.assign({}, LEVELS.hard, { pimc: 0, budget: 0 });          // 推演时大家按这套打
 function pyRound(v) { const f = Math.floor(v), d = v - f; if (d > 0.5) return f + 1; if (d < 0.5) return f; return f % 2 === 0 ? f : f + 1; }
 function botCtx(st, me, cfg) {
   const known = new Set(), voids = [new Set(), new Set(), new Set(), new Set()];
   const first = [-1, -1, -1, -1], sig = [new Set(), new Set(), new Set(), new Set()];
+  const cash = [new Set(), new Set(), new Set(), new Set()], hlead = [0, 0, 0, 0], seen = new Set();
   const rounds = st.tricks.map(t => t.cards);
   if (st.trick.length) rounds.push(st.trick);
   rounds.forEach((cards, ti) => {
@@ -545,12 +620,18 @@ function botCtx(st, me, cfg) {
       }
       if (sig[p].has(s)) sig[p].delete(s);                           // 后来又出了这门：信号作废
     });
+    if (!done) return;
+    cards.forEach(([, c]) => seen.add(c));
+    const [lp, lc] = cards[0], b = BOMB_OF[led];
+    if (led === H) hlead[lp]++;
+    // 主动吃：领出比这门炸弹还大的牌、自己收下这墩，炸弹还在外面——他在清这门的大牌、逼炸弹，要队友接着回这门
+    else if (b !== null && !forced && st.tricks[ti].w === lp && rank(lc) > rank(b) && !seen.has(b)) cash[lp].add(led);
   });
   const hand = new Set(st.hands[me]);
   const U = new Set();
   for (let c = 0; c < 52; c++) if (!hand.has(c) && !known.has(c)) U.add(c);
   for (const [, c] of st.trick) U.delete(c);
-  return { st, me, par: me ^ 2, cfg, U, voids, first, sig, hand, pub: { base: st.pts, hasbo: st.hasbo, hearts: st.hearts } };
+  return { st, me, par: me ^ 2, cfg, U, voids, first, sig, cash, hlead, hand, pub: { base: st.pts, hasbo: st.hasbo, hearts: st.hearts } };
 }
 const opp = (x, p) => ((p ^ x.me) & 1) === 1;
 const isVoid = (x, p, s) => x.cfg.voids && x.voids[p].has(s);
@@ -584,6 +665,25 @@ function slamThreat(x) {
   if (hp < 5) return null;
   for (let q = 0; q < 4; q++) if (h[q] === hp) return opp(x, q) ? q : null;
   return null;
+}
+// 出过的红桃（至少 n 张）全在一个人手里：这人有收满贯的苗头
+function slamLead(x, n) {
+  const h = x.pub.hearts, hp = h[0] + h[1] + h[2] + h[3];
+  if (hp < n) return -1;
+  for (let q = 0; q < 4; q++) if (h[q] === hp) return q;
+  return -1;
+}
+// 对方在收红桃（还没到 slamThreat 那么紧）：缺门时垫一张不带分的小红桃给队友，提早破掉
+function slamRisk(x) {
+  if (!x.cfg.slamIns) return null;
+  let q = slamLead(x, x.cfg.slamIns);
+  if (q < 0) { q = slamLead(x, 2); if (q >= 0 && !x.hlead[q]) q = -1; }   // 他自己主动出过红桃，2 张就算
+  return q >= 0 && opp(x, q) ? q : null;
+}
+// 队友在收满贯：红桃都在他手里（至少 5 张），他还主动出过红桃或者已经收了一大半
+function parSlam(x) {
+  if (!x.cfg.slamSup) return false;
+  return slamLead(x, 5) === x.par && (x.hlead[x.par] > 0 || x.pub.hearts[x.par] >= 7);
 }
 function botChoose(st, me, lvl) {
   const cfg = LEVELS[lvl] || LEVELS.hard;
@@ -648,11 +748,17 @@ function leadOptions(x) {
       } else if (hand.has(b) && cfg.guard) { v -= 3; cons.push([3, `这门有你的${BNAME[b]}，留着小牌护着它`]); }
     }
     if (ovoid) { v -= 1 + 4 * pw; cons.push([1 + 4 * pw, sigVoid(x, voidOpp, s) && !isVoid(x, voidOpp, s) ? `${rel(me, voidOpp)}开过${SUITNAME[s]}2，多半没这门了，会往你们身上垫分` : `${rel(me, voidOpp)}没有${SUITNAME[s]}了，会往你或队友身上垫分`]); }
-    else if (pvoid) { v += 2 * (1 - pw); if (pw < 0.5) why = sigVoid(x, par, s) && !isVoid(x, par, s) ? `队友开过${SUITNAME[s]}2，回这门让他垫牌` : `队友没有${SUITNAME[s]}了，出这门让他垫分`; }
+    let conv = '';
+    if (!ovoid && pvoid) { v += 2 * (1 - pw); if (pw < 0.5) { why = sigVoid(x, par, s) && !isVoid(x, par, s) ? `队友开过${SUITNAME[s]}2，回这门让他垫牌` : `队友没有${SUITNAME[s]}了，出这门让他垫分`; conv = 'pvoid'; } }
+    // 队友主动拿大牌吃过这门（比炸弹大的牌）：他在清大牌、逼炸弹，接着帮他回这门
+    if (cfg.cashRet && s !== H && b !== null && x.cash[par].has(s) && U.has(b) && !hand.has(b) && !ovoid) {
+      v += 2.6 * (1 - pw);
+      if (pw < 0.5) { why = `队友主动拿${SUITNAME[s]}大牌吃了一墩，接着帮他回${SUITNAME[s]}`; conv = 'cash'; }
+    }
     // 回牌：队友第一手主动出的那门，多半是他的短门
     if (cfg.ret && s !== H && x.first[par] === s && !ovoid && !pvoid) {
       v += 1.2 * (1 - pw);
-      if (pw < 0.5) why = `队友先出的${SUITNAME[s]}，帮他回这门`;
+      if (pw < 0.5 && !conv) { why = `队友先出的${SUITNAME[s]}，帮他回这门`; conv = 'ret'; }
     }
     // 对手先出的那门不帮他回，除非别的门更难打
     if (cfg.avoidOpp && !ovoid && others.some(q => opp(x, q) && x.first[q] === s)) { v -= 1; cons.push([1, '这门是对手先出的，别帮他回']); }
@@ -661,7 +767,7 @@ function leadOptions(x) {
     if (shortOk) { v += mybomb ? 1 : 0.6; if (!why) why = mybomb ? `先把${SUITNAME[s]}出完，好做断门垫炸弹` : `先把${SUITNAME[s]}打空，以后好垫牌`; }
     if (!why) why = pw < 0.35 ? '出小牌，自己不容易收这墩' : '几门里这门相对安全';
     cons.sort((p, q) => q[0] - p[0]);
-    opts.push({ c: low, v, why, con: cons.length ? cons[0][1] : '' });
+    opts.push({ c: low, v, why, con: cons.length ? cons[0][1] : '', conv });
     // 走大牌：这门的炸弹已经出了（或在自己手里），又没人断这门，趁早把大牌出掉
     const bombGone = !U.has(b) && !hand.has(b);
     const bombMine = cfg.cash && hand.has(b) && high > b;
@@ -670,6 +776,14 @@ function leadOptions(x) {
       if (cfg.cash && x.st.tricks.length <= 6) v2 += 0.3;
       if (bombMine) v2 -= 0.4;
       opts.push({ c: high, v: v2, why: bombMine ? `${BNAME[b]}在你手里，先把比它大的${SUITNAME[s]}走掉` : `${BNAME[b]}已经出了，趁机把${SUITNAME[s]}大牌出掉`, con: '' });
+    }
+    // 自己主动吃：比炸弹大的牌多、护着的小牌少，趁大家都还有这门，先拿最大的吃一墩（队友看到会接着回这门）
+    if (cfg.selfCash && s !== H && b !== null && U.has(b) && !hand.has(b) && hot === 1 && !ovoid && !pvoid && x.st.tricks.length <= 6) {
+      const above = cs.filter(c => c > b).length, below = cs.length - above;
+      const top = cs[cs.length - 1];
+      if (above && below <= 1 && ![...U].some(u => suit(u) === s && u > top) && !others.some(q => likelyVoid(x, q, s))) {
+        opts.push({ c: top, v: 0.8 + 0.5 * above - 0.6 * below + Math.random() * 0.1, why: `${SUITNAME[s]}大牌多、小牌少，趁大家都还有${SUITNAME[s]}，主动拿${nm(top)}吃一墩，队友会接着回这门`, con: '', conv: '' });
+      }
     }
   }
   return opts.sort((p, q) => q.v - p.v);
@@ -684,7 +798,7 @@ function botLead(x) {
     }
   }
   const o = leadOptions(x)[0];
-  return { c: o.c, why: o.why };
+  return { c: o.c, why: o.why, conv: o.conv || '', who: [x.par] };
 }
 // 这一墩安不安全：桌上没分、没波，后面的人都得跟这门（垫不了分），这门的炸弹也来不了
 function cleanTrick(x, led, T, tbo, after, card) {
@@ -705,6 +819,12 @@ function botFollow(x, legal, wp, wc, after) {
   const threat = slamThreat(x);
   if (threat !== null && led === H && (wp === threat || after.includes(threat))) {
     return over.length ? { c: over[over.length - 1], why: '对方快收全红了，抢下这墩红桃' } : { c: under[0], why: '压不过，留着大红桃以后破满贯' };
+  }
+  // 自己主动吃过这门（队友在回）：干净的一墩接着用最大的拿下，把这门的大牌走完
+  if (cfg.cashFollow && x.cash[me].has(led) && over.length) {
+    const top = over[over.length - 1];
+    const boss = ![...x.U].some(u => suit(u) === led && u > top);
+    if (boss && top !== b && b !== null && x.U.has(b) && top > b && cleanTrick(x, led, T, tbo, after, top)) return { c: top, why: `队友在回${SUITNAME[led]}，干净的一墩，接着走${nm(top)}` };
   }
   // 不攒大牌：干净的一墩，用这门最大的牌拿下来（它迟早要赢一墩，趁现在没分）
   if (cfg.cash && over.length && under.length) {
@@ -762,21 +882,33 @@ function botFollow(x, legal, wp, wc, after) {
 function botDiscard(x, wp, wc, after) {
   const { hand, par, pub, cfg, me } = x;
   const threat = slamThreat(x);
+  const psl = parSlam(x);
   const hs = [...hand].filter(c => suit(c) === H).sort((p, q) => p - q);
   if (opp(x, wp)) {
     const safe = !after.includes(par) || pForced(x, par, wc) < 0.3;
     if (safe) {
       if (threat !== null) {
-        if (wp === threat) return botWorst(x, false, '对方快收全红了，别给他红桃', wp);
-        if (hs.length) return { c: hs[hs.length - 1], why: '把红桃垫给别人，破他的满贯' };
+        if (wp === threat) return Object.assign(botWorst(x, false, '对方快收全红了，别给他红桃', wp), { conv: 'noheart', who: [threat] });
+        if (hs.length) return { c: hs[hs.length - 1], why: '把红桃垫给别人，破他的满贯', conv: 'brk', who: [threat, par] };
       }
+      if (psl) return Object.assign(botWorst(x, false, '队友在收满贯，红桃别垫给对手', wp), { conv: 'noheart', who: [par] });
+      const risk = slamRisk(x);
+      if (risk !== null && wp === risk) return Object.assign(botWorst(x, false, '对方在收红桃，别再给他红桃', wp), { conv: 'noheart', who: [risk] });
       return botWorst(x, true, undefined, wp);
     }
     const r = botShed(x);
     if (!PUBLIC.has(r.c)) r.why = '队友在后面可能被迫压上，先不垫分';
     return r;
   }
-  if (threat !== null && wp !== threat && hs.length) return { c: hs[0], why: '给队友一张小红桃，破对方的满贯' };
+  // 队友在收满贯：把红桃（先大的）垫给他
+  if (psl && hs.length) return { c: hs[hs.length - 1], why: '队友在收满贯，把红桃垫给他', conv: 'sup', who: [par] };
+  if (threat !== null && wp !== threat && hs.length) return { c: hs[0], why: '给队友一张小红桃，破对方的满贯', conv: 'brk', who: [threat, par] };
+  // 对方在收红桃：垫一张不带分的小红桃（2、3、4）给队友，提早破掉他的满贯
+  const risk = slamRisk(x);
+  if (risk !== null) {
+    const zero = hs.filter(c => PTS[c] === 0);
+    if (zero.length) return { c: zero[0], why: `${rel(me, risk)}在收红桃，垫一张不带分的小红桃给队友，破他的满贯`, conv: 'brk', who: [risk, par] };
+  }
   // 破分：队友稳赢、分比你少，垫一张大红桃给他
   if (cfg.split && wp === par && !pub.hasbo[par] && !canBeat(x, wc, after)) {
     const T = x.st.trick.reduce((a, t) => a + PTS[t[1]], 0);
@@ -873,7 +1005,14 @@ const copyWorld = w => ({ phase: w.phase, turn: w.turn, first7: w.first7, trick:
 function sampleWorld(st, me, x, cfg) {
   const need = [0, 1, 2, 3].map(q => (q === me ? 0 : st.hands[q].length));
   const cards = [...x.U];
-  const bias = (q, c) => (cfg && cfg.shortBias && x.first[q] === suit(c) ? cfg.shortBias : 1);   // 第一手先出的花色多半是短门
+  const bias = (q, c) => {
+    let w = cfg && cfg.shortBias && x.first[q] === suit(c) ? cfg.shortBias : 1;   // 第一手先出的花色多半是短门
+    if (cfg && cfg.cashBias && x.cash[q].has(suit(c))) {               // 主动拿大牌吃过这门的人：多半没有这门的炸弹，比炸弹大的牌多半还有
+      const b = BOMB_OF[suit(c)];
+      if (c === b) w *= cfg.cashBias; else if (c > b && cfg.cashHigh) w *= cfg.cashHigh;
+    }
+    return w;
+  };
   for (let tries = 0; tries < 60; tries++) {
     const soft = tries < 30;                                         // 先照顾开 2 的信号，发不出来再放开
     const order = cards.map(c => [c, Math.random(), [0, 1, 2, 3].filter(q => q !== me && !isVoid(x, q, suit(c)) && !(soft && sigVoid(x, q, suit(c))))])
@@ -896,6 +1035,8 @@ function sampleWorld(st, me, x, cfg) {
   }
   return null;
 }
+const CONV_WHY = { cash: '队友主动拿大牌吃过这门，接着帮他回', ret: '帮队友回他先出的那门', pvoid: '出队友没有的那门，让他垫牌',
+  brk: '垫红桃给别人，破对方的满贯', sup: '队友在收满贯，把红桃垫给他', noheart: '红桃不给对手' };
 function pimcChoose(st, me, cfg) {
   const base = botChoose(st, me, 'roll');
   const legal = legalMoves(st, me);
@@ -933,6 +1074,21 @@ function pimcChoose(st, me, cfg) {
   let best = rep !== undefined && sum.has(rep) ? rep : cands[0];
   for (const c of cands) if (sum.get(c) > sum.get(best) + 1e-9) best = c;
   if (best === rep) return base;
+  // 回牌、破满贯这些是约定（人看得懂）：先在约定里挑推演最好的那张；约定外的只有明显更好（平均多赚 convM 份）才改
+  const human = (base.who || []).some(q => st.seats && st.seats[q] && st.seats[q].kind === 'human');
+  if (base.conv && cfg.convM && (cfg.convAll || human)) {
+    const ok = base.conv === 'noheart' ? (c => suit(c) !== H) : (c => suit(c) === suit(base.c));
+    if (!ok(best)) {
+      let bi;
+      for (const c of cands) if (ok(c) && (bi === undefined || sum.get(c) > sum.get(bi))) bi = c;
+      const M = base.conv === 'cash' ? (cfg.convMcash || cfg.convM) : cfg.convM;   // 队友明说要回的那门，更要照顾
+      if (bi !== undefined && (sum.get(best) - sum.get(bi)) / n < M) {
+        if (bi === rep) return base;
+        const v = sum.get(bi) / n;
+        return { c: bi, why: `${CONV_WHY[base.conv] || base.why}：往后推演了 ${n} 种发牌，出${nm(bi)}最好（平均 ${(v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1)} 份）` };
+      }
+    }
+  }
   const fmt = v => (v >= 0 ? '+' : '−') + Math.abs(v / n).toFixed(1);
   const alt = rep !== undefined && sum.has(rep) ? `，出${nm(base.c)}平均 ${fmt(sum.get(rep))} 份` : '';
   return { c: best, why: `往后推演了 ${n} 种发牌：这样出平均 ${fmt(sum.get(best))} 份${alt}（+ 是对方挨罚）` };
@@ -1439,9 +1595,112 @@ function reviewHTML(V, st) {
   return `<h3>复盘：这把有 ${rs.length} 手和高手不一样</h3><ol class="rev">${items}</ol>` + (rs.length > 6 ? `<p class="mute">只列前 6 手。</p>` : '');
 }
 
+/* ================= 牌谱 ================= */
+// 每打完一把记一份牌谱：发的牌、每一手谁出的什么（h 人出的、b 电脑、a 超时系统代出）、结果。
+// 存在这台手机里（最多 400 把）；网站版顺手传到联机服务器，在 Claude 里打开时存到页面数据库。
+// 以后拿来对比人和电脑的打法：哪里打得好就学过来，哪里失误就标出来，一轮一轮把电脑练强。
+const REC_KEY = 'gz-recs', REC_MAX = 400, BUILD = 'v7';
+const REC_APP = location.protocol === 'file:' ? 'file' : /lianxi/.test(location.pathname) || /github\.io$/.test(location.hostname) ? 'lianxi' : 'claude';
+const RNET = window.__gzNet || null;
+let recDid = null, recBusy = false;
+function recDevice() {
+  if (recDid) return recDid;
+  recDid = (RNET && RNET.uid) || loadJSON('gz-did', null);
+  if (!recDid) { recDid = 'd' + Math.random().toString(36).slice(2, 12); saveJSON('gz-did', recDid); }
+  return recDid;
+}
+function recLoad() { const a = loadJSON(REC_KEY, []); return Array.isArray(a) ? a : []; }
+function recStore(a) {
+  for (let k = 0; k < 6 && a.length; k++) {
+    try { localStorage.setItem(REC_KEY, JSON.stringify(a)); return; } catch (e) { a = a.slice(Math.ceil(a.length / 4)); }   // 存满了：丢掉最早的
+  }
+}
+function dealHash(deal) { let h = 2166136261; for (const hd of deal) for (const c of hd) { h ^= c + 1; h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); }
+function recDeal(st) {
+  if (st.deal) return st.deal.map(h => h.slice());
+  const d = st.hands.map(h => h.slice());
+  for (const t of st.tricks) for (const [p, c] of t.cards) d[p].push(c);
+  for (const [p, c] of (st.cut || [])) d[p].push(c);
+  return d.map(h => h.sort((a, b) => a - b));
+}
+function recName(st, V, i) {
+  const s = (st.seats || [])[i] || {};
+  if (s.kind === 'bot') return s.name ? s.name + '（电脑代打）' : '电脑';
+  if (V.mp) return s.name || (s.uid === MP.uid ? (RNET ? RNET.getName() : '') : MP.names[i] !== '你' ? MP.names[i] : '') || '';
+  return i === 0 ? ((RNET && RNET.getName()) || '我') : '';
+}
+function makeRecord(st, V) {
+  const deal = recDeal(st);
+  if (deal.length !== 4 || deal.some(h => h.length !== 13)) return null;
+  const plays = [];
+  for (const t of st.tricks) for (const [p, c] of t.cards) plays.push([p, c]);
+  for (const [p, c] of (st.cut || [])) plays.push([p, c]);
+  const now = new Date(), day = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const room = V.mp ? MP.code : null;
+  const r = st.result || {};
+  return {
+    v: 1, id: `${day}-${room ? 'r' + room : recDevice()}-${dealHash(deal)}`, app: REC_APP, bot: BUILD, t: Date.now(),
+    mode: V.mp ? 'mp' : 'sp', room, dev: recDevice(), me: V.spect ? -1 : V.my,
+    lvl: V.mp ? ((MP.doc && MP.doc.lvl) || 'hard') : SET.lvl, timer: V.mp ? ((MP.doc && MP.doc.timer) || 0) : (Number(SET.timer) || 0),
+    hand: st.hand, leader: st.leader0, first7: !!st.first7,
+    seats: [0, 1, 2, 3].map(i => { const s = (st.seats || [])[i] || {}; return { k: s.kind === 'human' ? 'h' : s.kind === 'bot' ? 'b' : 'e', n: recName(st, V, i), u: s.uid || s.was || (!V.mp && i === 0 ? recDevice() : null) }; }),
+    deal, plays, by: st.by && st.by.length === plays.length ? st.by : '', surr: st.surrBy === undefined ? null : st.surrBy,   // 对不上（旧版本出过牌）就不记谁出的
+    res: { w: r.winTeam === undefined ? null : r.winTeam, k: r.kind || '', sc: r.scores || [], pen: r.pen || 0 },
+  };
+}
+function recordHand(st) {
+  try {
+    const rec = makeRecord(st, view());
+    if (!rec) return;
+    const a = recLoad();
+    if (a.some(x => x.id === rec.id)) return;
+    a.push(rec);
+    recStore(a.length > REC_MAX ? a.slice(-REC_MAX) : a);
+    setTimeout(recUpload, 2000);
+  } catch (e) { /* 记不了就算了，不影响打牌 */ }
+}
+async function recUpload() {
+  if (recBusy) return;
+  recBusy = true;
+  try {
+    const a = recLoad(), me = recDevice(), todo = a.filter(r => !r.up && r.dev === me);
+    if (!todo.length) return;
+    const done = new Set();
+    if (RNET && RNET.putRec) {                        // 网站版：传到联机服务器
+      for (const r of todo.slice(-30)) { try { await RNET.putRec(r.id, r); done.add(r.id); } catch (e) { break; } }
+    } else if (window.claude && typeof window.claude.use === 'function') {   // Claude 里：存到这个页面的数据库，一天一份
+      const db = await window.claude.use('db');
+      if (db) {
+        for (const day of new Set(todo.map(r => r.id.slice(0, 8)))) {
+          const all = a.filter(r => r.dev === me && r.id.slice(0, 8) === day);
+          for (let k = 0; k * 100 < all.length; k++) {
+            const part = all.slice(k * 100, k * 100 + 100);
+            if (!part.some(r => !r.up)) continue;
+            await db.doc(`recs/${day}-${me}-${k + 1}`).set({ day, dev: me, app: REC_APP, n: part.length, recs: part.map(r => { const o = Object.assign({}, r); delete o.up; return o; }) });
+            part.forEach(r => done.add(r.id));
+          }
+        }
+      }
+    }
+    if (done.size) { const b = recLoad(); b.forEach(r => { if (done.has(r.id)) r.up = 1; }); recStore(b); }
+  } catch (e) { /* 下一把再传 */ } finally { recBusy = false; }
+}
+function recExport() {
+  const a = recLoad();
+  if (!a.length) { toast('还没有牌谱，打完一把就有了'); return; }
+  const blob = new Blob([JSON.stringify({ app: REC_APP, t: Date.now(), n: a.length, recs: a })], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const el = document.createElement('a');
+  el.href = url; el.download = `拱猪牌谱-${new Date().toISOString().slice(0, 10)}-${a.length}把.json`;
+  document.body.appendChild(el); el.click(); el.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+  toast(`导出了 ${a.length} 把牌谱`);
+}
+
 /* ================= 状态变化 ================= */
 function onState(prev, next) {
   if (!next) return;
+  if (next.phase === 'end' && (!prev || prev.phase !== 'end' || prev.hand !== next.hand)) recordHand(next);
   if (!prev || prev.hand !== next.hand) {
     clearHold(); sel = null; hint = null; lastRenderedTrick = '';
     feedback = null;
@@ -1502,7 +1761,7 @@ function scheduleBots() {
     if (!SP || SP.v !== v || SP.phase !== 'play' || SP.seats[SP.turn].kind !== 'bot') return;
     const r = botChoose(SP, SP.turn, SET.lvl);
     const prev = SP;
-    SP = applyMove(SP, SP.turn, r.c);
+    SP = applyMove(SP, SP.turn, r.c, 'b');
     saveSP();
     onState(prev, SP);
   }, base);
@@ -1522,7 +1781,7 @@ function humanPlay(c) {
     return;
   }
   const prev = SP;
-  SP = applyMove(SP, V.my, c);
+  SP = applyMove(SP, V.my, c, 'h');
   saveSP();
   onState(prev, SP);
 }
@@ -1592,6 +1851,9 @@ $('#menuBtn').addEventListener('click', () => {
   syncSettingsUI(); $('#newConfirm').hidden = true; $('#surrConfirm').hidden = true;
   const V = view();
   $('#surrBtn').hidden = !(V.st && V.st.phase === 'play' && !V.spect && !V.mp);
+  const nrec = recLoad().length;
+  $('#recBtn').textContent = nrec ? `导出牌谱（${nrec} 把）` : '导出牌谱';
+  $('#recBtn').hidden = REC_APP === 'claude';                 // 在 Claude 里牌谱直接存进页面数据库，不用导出
   openSheet('menuSheet');
 });
 $('#surrBtn').addEventListener('click', () => {
@@ -1615,6 +1877,7 @@ $('#surrYes').addEventListener('click', () => {
   onState(prev, SP);
 });
 $('#rulesBtn').addEventListener('click', () => { closeSheet('menuSheet'); openSheet('rulesSheet'); });
+$('#recBtn').addEventListener('click', () => { recExport(); });
 $('#newBtn').addEventListener('click', () => {
   if (MODE === 'sp' && SP && SP.phase === 'play' && (SP.tricks.length || SP.hand > 1)) { $('#newConfirm').hidden = false; return; }
   startSP(true);
@@ -1887,7 +2150,7 @@ async function mpHumanMove(v, p, c) {
       if (!cur || !cur.game) return null;
       const g = cur.game;
       if (g.v !== v || g.turn !== p || g.seats[p].uid !== MP.uid) return null;
-      cur.game = applyMove(g, p, c);
+      cur.game = applyMove(g, p, c, 'h');
       return cur;
     }, false);
   } catch (e) { toast('出牌没发出去，再点一次'); }
@@ -1930,7 +2193,7 @@ async function mpBotMove(v) {
       const g = cur.game;
       if (g.v !== v || g.phase !== 'play' || g.seats[g.turn].kind !== 'bot') return null;
       const r = botChoose(g, g.turn, cur.lvl || 'hard');
-      cur.game = applyMove(g, g.turn, r.c);
+      cur.game = applyMove(g, g.turn, r.c, 'b');
       return cur;
     }, true);
   } catch (e) { scheduleBots(); }

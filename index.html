@@ -114,6 +114,9 @@
       if (qos > 0) { send(new Uint8Array([0x40, 2, body[p], body[p + 1]])); p += 2; }
       const hs = mq.subs.get(topic);
       if (hs) [...hs].forEach(fn => { try { fn(body.subarray(p)); } catch (e) { console.error(e); } });
+      for (const [k, ws] of mq.subs) {                 // 通配订阅（xxx/#）：读牌谱用
+        if (k.endsWith('/#') && topic.startsWith(k.slice(0, -1))) [...ws].forEach(fn => { try { fn(body.subarray(p), topic); } catch (e) { console.error(e); } });
+      }
     } else if (type === 9 || type === 11) {            // SUBACK / UNSUBACK
       const id = (body[0] << 8) | body[1];
       const r = mq.acks.get(id);
@@ -384,8 +387,23 @@
     bannerTimer = setTimeout(() => { if (!mq.ok && [...docs.values()].some(e => e.fns.size)) banner().hidden = false; }, 1500);
   });
 
+  /* ---------- 牌谱：每把一条保留消息 ---------- */
+  async function putRec(id, data) {
+    const idle = !mq.ok && !mq.subs.size;             // 只为传牌谱才连上的：传完就断开，省电省流量
+    await publish(PREFIX + 'rec/' + String(id).replace(/[^\w.-]/g, '_'), data, true, 8000);
+    if (idle) setTimeout(() => { if (!mq.subs.size && !docs.size) { mq.want = false; dropSocket(); } }, 3000);
+  }
+  async function getRecs(ms) {                         // 把服务器上存着的牌谱都收下来（给 Claude 分析用）
+    const out = new Map(), topic = PREFIX + 'rec/#';
+    const fn = payload => { try { const d = JSON.parse(dec.decode(payload)); if (d && d.id) out.set(d.id, d); } catch (e) { /* 坏的跳过 */ } };
+    await subscribe(topic, fn);
+    await sleep(ms || 5000);
+    unsubscribe(topic, fn);
+    return [...out.values()];
+  }
+
   window.__gzNet = Object.freeze({
-    uid, getName, setName,
+    uid, getName, setName, putRec, getRecs,
     connect: ms => ensure(ms),
     online: () => mq.ok,
     broker: () => BROKERS[mq.idx],
@@ -645,6 +663,165 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
 @media (max-width: 440px) { .in-room .brand small { display: none; } }
 .me-row .seat .who .nm.me-nm { color: var(--page-ink); font-weight: 600; font-size: 13px; }
 
+/* ---------- 牌面上的字跟着牌的大小走（平板上牌大，字也大） ---------- */
+@supports (container-type: inline-size) {
+  .card { container-type: inline-size; }
+  .card .ix { top: max(4px, 6cqi); left: max(5px, 9cqi); font-size: clamp(13px, 32cqi, 36px); }
+  .card .sx { top: calc(max(4px, 6cqi) + .95 * clamp(13px, 32cqi, 36px)); left: max(5px, 9cqi); font-size: clamp(10px, 25cqi, 28px); }
+  .card .pip { right: max(5px, 8cqi); bottom: max(3px, 5cqi); font-size: clamp(18px, 52cqi, 60px); }
+  .card .tag { left: max(4px, 7cqi); bottom: max(4px, 7cqi); font-size: clamp(10px, 16cqi, 17px); padding: .3em .4em; }
+  .card .pt { left: max(5px, 8cqi); bottom: max(5px, 8cqi); font-size: clamp(9px, 14cqi, 15px); }
+}
+/* ---------- 平板、电脑：桌上的字、分数、出的牌都放大 ---------- */
+@media (min-width: 700px) and (min-height: 600px) {
+  #app { max-width: 1100px; gap: 10px; padding-inline: 20px; }
+  .brand { font-size: 34px; }
+  .brand small { font-size: 17px; }
+  .pill { font-size: 14px; padding: 5px 11px; }
+  .icon-btn { height: 40px; font-size: 16px; padding: 0 16px; }
+  .table { grid-template-columns: minmax(130px, 1fr) minmax(240px, 2.4fr) minmax(130px, 1fr); gap: 10px; padding: 16px 14px 12px; min-height: 420px; }
+  .seat { padding: 10px 12px; gap: 6px; border-radius: 14px; }
+  .seat.n { width: min(360px, 100%); }
+  .who { font-size: 16px; gap: 7px; }
+  .who .role { font-size: 13px; padding: 2px 8px; }
+  .who .nm { font-size: 14px; }
+  .score { font-size: 28px; }
+  .cnt { font-size: 14px; }
+  .mini { font-size: 14px; padding: 4px 5px 3px; border-radius: 5px; }
+  .voids { font-size: 13px; }
+  .status { font-size: 17px; }
+  .center { min-height: 250px; }
+  .slot { width: clamp(70px, 11vmin, 112px); }
+  .hand { gap: 8px; }
+  .clock-n b { font-size: 24px; }
+  .clock-bar { width: 120px; }
+  .me-row .seat .who .nm.me-nm { font-size: 15px; }
+}
+/* 平板竖着拿：手牌两行，一行 7 张，牌大一点好点 */
+@media (min-width: 700px) and (orientation: portrait) {
+  .hand .card { flex-basis: calc((100% - 48px) / 7); max-width: 104px; }
+}
+/* 平板横着拿、电脑：手牌一行 13 张 */
+@media (min-width: 900px) and (orientation: landscape) {
+  .hand .card { flex-basis: calc((100% - 96px) / 13); max-width: 92px; }
+}
+/* 手机横着拿：高度不够，桌子压扁、手牌一行放下 */
+@media (orientation: landscape) and (max-height: 520px) {
+  #app { padding-block: 4px 6px; gap: 4px; }
+  .bar { min-height: 34px; }
+  .brand { font-size: 22px; }
+  .table { min-height: 0; padding: 6px 8px; gap: 4px; }
+  .seat { padding: 4px 7px; gap: 2px; }
+  .score { font-size: 17px; }
+  .center { min-height: 112px; }
+  .slot { width: clamp(36px, 10vh, 56px); }
+  .status { font-size: 13px; }
+  .me { gap: 2px; }
+  .hand { padding-top: 4px; gap: 4px; }
+  .hand .card { flex-basis: calc((100% - 48px) / 13); max-width: 62px; }
+}
+
+/* ---------- 首页：开房间等朋友、输房间号加入、和电脑打 ---------- */
+.home { position: fixed; inset: 0; z-index: 18; overflow-y: auto; background: var(--page); color: var(--page-ink);
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+.home-in { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.home-hero { border-radius: 22px; padding: 26px 18px 22px; text-align: center; color: var(--felt-ink);
+  background: radial-gradient(120% 90% at 50% 30%, var(--felt) 0%, var(--felt) 55%, var(--felt-deep) 100%);
+  box-shadow: inset 0 0 0 6px var(--felt-deep), inset 0 0 0 7px var(--felt-line); }
+.home-title { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: clamp(42px, 13vw, 76px); line-height: 1.05; letter-spacing: .14em; color: var(--gold); }
+.home-sub { margin: 8px 0 0; font-size: 14px; color: var(--felt-mute); letter-spacing: .08em; }
+.home-fan { display: flex; justify-content: center; align-items: flex-start; margin: 20px 0 6px; }
+.home-fan .card { width: clamp(58px, 18vw, 96px); flex: none; margin: 0 -5px; }
+.home-fan .card:nth-child(1) { transform: rotate(-11deg) translateY(10px); }
+.home-fan .card:nth-child(3) { transform: rotate(11deg) translateY(10px); }
+.home-invite { display: grid; gap: 10px; padding: 14px 16px; border: 2px dashed var(--gold); border-radius: 16px; background: var(--panel); color: var(--panel-ink); }
+.home-invite p { margin: 0; font-size: 17px; line-height: 1.5; }
+.home-invite b { font: 700 22px var(--font-index); letter-spacing: .1em; color: var(--title); }
+.home-name { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.home-name span { font-size: 14px; color: var(--page-mute); }
+.home-name input { flex: 1 1 8em; min-width: 0; width: 0; letter-spacing: .04em; color: var(--page-ink); background: var(--panel); }
+.home-acts { display: grid; gap: 10px; }
+.home-act { display: grid; gap: 4px; text-align: left; width: 100%; padding: 16px 18px; border-radius: 16px; border: 1px solid var(--line); background: var(--panel); color: var(--panel-ink); cursor: pointer; font: inherit; }
+.home-act b { font-size: 20px; letter-spacing: .04em; }
+.home-act > span { font-size: 13px; color: var(--panel-mute); line-height: 1.5; }
+.home-act.primary { background: var(--gold); color: var(--gold-ink); border-color: transparent; }
+.home-act.primary > span { color: var(--gold-ink); opacity: .78; }
+.home-act .row { margin-top: 6px; }
+.home-act input { flex: 1 1 6em; min-width: 0; width: 0; background: var(--panel); }
+.home-act:focus-visible, .home-act .btn:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.home-status { margin: 0; min-height: 1.5em; text-align: center; font-size: 14px; line-height: 1.5; color: var(--page-mute); }
+.home-foot { display: flex; justify-content: center; gap: 8px; }
+.home .btn { background: var(--panel); }
+@media (min-width: 700px) {
+  .home { padding-top: calc(32px + env(safe-area-inset-top, 0px)); }
+  .home-in { max-width: 600px; gap: 16px; }
+  .home-act { padding: 20px 22px; }
+  .home-act b { font-size: 23px; }
+  .home-act > span { font-size: 15px; }
+}
+@media (min-width: 900px) and (orientation: landscape) {
+  .home-in { max-width: 1020px; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); column-gap: 28px; align-items: start; }
+  .home-hero { grid-column: 1; grid-row: 1 / span 6; padding: 44px 24px 36px; }
+  .home-in > :not(.home-hero) { grid-column: 2; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .home-in { max-width: 860px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 18px; align-items: start; }
+  .home-hero { grid-column: 1; grid-row: 1 / span 6; padding: 16px; }
+  .home-in > :not(.home-hero) { grid-column: 2; }
+  .home-fan { margin-top: 12px; }
+  .home-fan .card { width: 54px; }
+  .home-act { padding: 10px 14px; }
+}
+
+/* ---------- 等人页面：房间号、邀请链接、四个座位围着一张桌子 ---------- */
+#mpSheet { place-items: stretch; padding: 0; background: var(--page); }
+#mpSheet .panel { width: 100%; max-width: 1020px; max-height: none; min-height: 100%; margin: 0 auto; border-radius: 0; box-shadow: none;
+  background: var(--page); color: var(--page-ink); padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+#mpSheet .panel p, #mpSheet .panel li { color: var(--page-ink); }
+#mpSheet .panel .mute { color: var(--page-mute); }
+#mpSheet .btn:not(.primary) { background: var(--panel); }
+.lobby { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.lobby-card { display: grid; gap: 10px; padding: 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--panel-ink); }
+.lobby-card .invite { margin-top: 0; }
+.ltable { display: grid; grid-template-columns: 1fr minmax(76px, .8fr) 1fr; grid-template-rows: auto auto auto; gap: 8px; padding: 12px; border-radius: 22px; color: var(--felt-ink);
+  background: radial-gradient(120% 90% at 50% 40%, var(--felt) 0%, var(--felt) 55%, var(--felt-deep) 100%);
+  box-shadow: inset 0 0 0 6px var(--felt-deep), inset 0 0 0 7px var(--felt-line); }
+.lseat { display: grid; gap: 4px; align-content: start; min-width: 0; min-height: 96px; padding: 10px; border-radius: 14px; background: var(--felt-chip); border: 1px solid var(--felt-line); }
+.lseat.n { grid-column: 1 / -1; grid-row: 1; justify-self: center; width: min(250px, 100%); }
+.lseat.s { grid-column: 1 / -1; grid-row: 3; justify-self: center; width: min(250px, 100%); }
+.lseat.w { grid-column: 1; grid-row: 2; }
+.lseat.e { grid-column: 3; grid-row: 2; }
+.lmid { grid-column: 2; grid-row: 2; display: grid; place-items: center; text-align: center; font-size: 12px; line-height: 1.6; color: var(--felt-mute); }
+.lno { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font: 700 14px/1.2 var(--font-index); }
+.lteam { font: 600 11px/1 var(--font-ui); padding: 3px 7px; border-radius: 999px; border: 1px solid var(--felt-line); color: var(--felt-mute); }
+.team-a .lteam { border-color: var(--gold); color: var(--gold); }
+.lname { font-size: 16px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.lsub { font-size: 12px; color: var(--felt-mute); }
+.lsub .on { color: var(--good); }
+.lseat.me { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+.lseat.empty { border-style: dashed; }
+.lseat.empty .lname, .lseat.bot .lname { color: var(--felt-mute); font-weight: 500; }
+.lacts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.lacts .seat-btn { color: var(--felt-ink); border-color: var(--felt-line); background: rgba(255, 255, 255, .07); padding: 6px 9px; }
+.dots::after { content: '...'; display: inline-block; width: 0; overflow: hidden; white-space: nowrap; vertical-align: bottom; animation: dots 1.6s steps(4) infinite; }
+@keyframes dots { to { width: 1.3em; } }
+.btn.big { width: 100%; padding: 14px 18px; font-size: 18px; border-radius: 14px; }
+.lobby-go { display: grid; gap: 8px; }
+.lobby-start { position: sticky; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 2; }
+.lobby-start .btn { box-shadow: 0 8px 22px rgba(10, 18, 40, .22); }
+@media (min-width: 700px) {
+  .lseat { min-height: 124px; padding: 14px; }
+  .lseat.n, .lseat.s { width: min(300px, 100%); }
+  .lname { font-size: 19px; }
+  .lno { font-size: 16px; }
+  .lmid { font-size: 14px; }
+}
+@media (min-width: 900px) and (orientation: landscape) {
+  .lobby { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); column-gap: 24px; align-items: start; }
+  .lobby-side { grid-column: 1; }
+  .lobby-main { grid-column: 2; grid-row: 1 / span 3; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -679,6 +856,32 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
     </div>
     <div class="hand" id="hand"></div>
   </section>
+</div>
+
+<div class="home" id="home" hidden>
+  <div class="home-in">
+    <header class="home-hero">
+      <h1 class="home-title">芒市拱猪</h1>
+      <p class="home-sub">四人两队 · 对家一伙 · 分最高的那队输</p>
+      <div class="home-fan" id="homeFan" aria-hidden="true"></div>
+    </header>
+    <div class="home-invite" id="homeInvite" hidden>
+      <p>朋友叫你进 <b id="homeInvCode"></b> 号房间</p>
+      <div class="row"><button class="btn primary" id="homeInvGo" type="button">进房间</button><button class="btn ghost" id="homeInvNo" type="button">先不进</button></div>
+    </div>
+    <label class="home-name"><span>你的名字</span><input type="text" id="homeName" maxlength="8" placeholder="比如 阿强" autocomplete="off"></label>
+    <div class="home-acts">
+      <button class="home-act primary" id="homeCreate" type="button"><b>开房间，等朋友来</b><span>开好后把链接发到微信群，朋友点开就坐进来，空位电脑补上</span></button>
+      <div class="home-act" role="group" aria-label="加入房间">
+        <b>加入房间</b>
+        <span>输入朋友给的 4 位房间号</span>
+        <div class="row"><input type="text" id="homeCode" inputmode="numeric" maxlength="4" placeholder="房间号" autocomplete="off" aria-label="房间号"><button class="btn" id="homeJoin" type="button">加入</button></div>
+      </div>
+      <button class="home-act" id="homeSolo" type="button"><b>和电脑打</b><span id="homeSoloSub">电脑当队友和对手，想打就打</span></button>
+    </div>
+    <p class="home-status" id="homeStatus" role="status"></p>
+    <div class="home-foot"><button class="btn ghost" id="homeRules" type="button">规则</button></div>
+  </div>
 </div>
 
 <div class="sheet" id="menuSheet" hidden>
@@ -734,6 +937,13 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
       <li>一个人收齐 13 张红桃是<b>小满贯</b>，直接赢；连猪、羊、波也都收了是<b>大满贯</b>，罚双倍。</li>
       <li>输了罚几份，看输的那队里分最高的人：3000 以内罚 1 份，3000 起 2 份，6000 起 3 份，9000 起 4 份。队友一起受罚。所以赢的时候要把分堆到对方一个人身上，牌差的时候少输就是赢。</li>
       <li>牌实在太差可以<b>投降</b>（菜单里）：投降的人把剩下没出的分牌全吃下，这把这队输，按吃完后的分算罚几份。和朋友打时，队友在线要他同意。</li>
+    </ul>
+    <h3>电脑队友怎么配合你</h3>
+    <ul>
+      <li>你主动拿一门的大牌（比这门的猪、羊、波还大）吃下一墩，电脑队友轮到出牌时会接着回这门，让你把大牌走掉、把炸弹逼出来。</li>
+      <li>对方有人把出过的红桃全收了（有收满贯的苗头），电脑没这门时会垫一张红桃给你（先垫不带分的 2、3、4），把他的满贯破掉。</li>
+      <li>你在收满贯（红桃都在你手里，你还主动出过红桃），电脑会把红桃垫给你，不垫给对手。</li>
+      <li>每把打完都会记下牌谱，用来对比人和电脑的打法，一轮一轮把电脑练强。</li>
     </ul>
     <h3>对战版的规定</h3>
     <ul>
@@ -827,7 +1037,7 @@ function startHand(st0, leader, first) {
   return Object.assign({}, st0, {
     v: (st0.v || 0) + 1, hand: (st0.hand || 0) + 1, hands, trick: [], turn: leader, leader0: leader,
     tricks: [], pts: [0, 0, 0, 0], hasbo: [false, false, false, false], hearts: [0, 0, 0, 0], got: [[], [], [], []],
-    phase: 'play', result: null, first7: !!first, surrBy: null,
+    phase: 'play', result: null, first7: !!first, surrBy: null, deal: hands.map(h => h.slice()), by: '', cut: null,
   });
 }
 function legalMoves(st, p) {
@@ -848,12 +1058,13 @@ function winnerOf(trick) {
   return [bp, bc];
 }
 const scoreOf = (st, p) => st.pts[p] * (st.hasbo[p] ? 8 : 1);
-function applyMove(st0, p, c) {
+function applyMove(st0, p, c, by) {             // by：h 人出的、b 电脑、a 超时系统代出（记牌谱用）
   if (!legalMoves(st0, p).includes(c)) throw new Error('illegal move');
   const st = clone(st0);
   st.hands[p] = st.hands[p].filter(x => x !== c);
   st.trick.push([p, c]);
   st.v++;
+  st.by = (st.by || '') + (by || '?');
   if (st.trick.length < 4) { st.turn = (p + 1) % 4; return st; }
   const [w] = winnerOf(st.trick);
   for (const [, x] of st.trick) {
@@ -926,6 +1137,7 @@ function surrender(st0, p) {
     if (suit(c) === H) st.hearts[p]++;
   }
   st.hands = st.hands.map(h => h.filter(c => !PUBLIC.has(c)));
+  st.cut = st.trick.map(t => t.slice());          // 投降时桌上没打完的那墩（记牌谱用）
   st.trick = [];
   st.v++;
   st.surrBy = p;
@@ -942,19 +1154,26 @@ function nextHand(st0) {
 // 打法来自模拟：不喂队友、记断门、逼炸弹、护炸弹小牌、垫短门、先垫波、破满贯、条件对时主动吃波
 // 第二版按芒市牌友的意见加了：回队友先出的那门、不帮对手回牌、开 2 当"这门没了"的信号、
 // 安全时先把大牌走掉（不攒到最后门门大）、打空一门、波留给有分的对手、队友有分时替他挡波
+// 第三版读队友的意思：队友主动拿大牌吃一墩（比这门炸弹大的牌）就接着帮他回这门；对方在收红桃时，
+// 缺门就垫一张不带分的小红桃给队友破满贯；队友在收满贯就把红桃给他、不垫给对手。
+// 这些配合是给人看的约定：高手往后推演，只有明显更好时才不按约定出。
 const LEVELS = {
   easy: { mem: 'none', voids: false, flush: false, guard: false, danger: false, short: false, slamdef: true, eatbo: false, noise: 0.25,
-    ret: false, sig2: false, avoidOpp: false, cash: false, voidAll: false, boOrder: false, boShield: false, split: false },
+    ret: false, sig2: false, avoidOpp: false, cash: false, voidAll: false, boOrder: false, boShield: false, split: false,
+    cashRet: false, selfCash: false, slamIns: 0, slamSup: false },
   normal: { mem: 'none', voids: true, flush: true, guard: true, danger: false, short: true, slamdef: true, eatbo: false, noise: 0,
-    ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: false, split: false },
+    ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: false, split: false,
+    cashRet: true, selfCash: false, cashFollow: true, slamIns: 3, slamSup: true },
   hard: { mem: 'full', voids: true, flush: true, guard: true, danger: true, short: true, slamdef: true, eatbo: true, noise: 0,
-    ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: true, split: false, pimc: 24, budget: 350, shortBias: 0.7, penW: 0.35 },
+    ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: true, split: false, pimc: 24, budget: 350, shortBias: 0.7, penW: 0.35,
+    cashRet: true, selfCash: false, cashFollow: true, slamIns: 3, slamSup: true, convM: 0.5, convMcash: 0.8, convAll: false, cashBias: 0.35, cashHigh: 1.8 },
 };
 LEVELS.roll = Object.assign({}, LEVELS.hard, { pimc: 0, budget: 0 });          // 推演时大家按这套打
 function pyRound(v) { const f = Math.floor(v), d = v - f; if (d > 0.5) return f + 1; if (d < 0.5) return f; return f % 2 === 0 ? f : f + 1; }
 function botCtx(st, me, cfg) {
   const known = new Set(), voids = [new Set(), new Set(), new Set(), new Set()];
   const first = [-1, -1, -1, -1], sig = [new Set(), new Set(), new Set(), new Set()];
+  const cash = [new Set(), new Set(), new Set(), new Set()], hlead = [0, 0, 0, 0], seen = new Set();
   const rounds = st.tricks.map(t => t.cards);
   if (st.trick.length) rounds.push(st.trick);
   rounds.forEach((cards, ti) => {
@@ -971,12 +1190,18 @@ function botCtx(st, me, cfg) {
       }
       if (sig[p].has(s)) sig[p].delete(s);                           // 后来又出了这门：信号作废
     });
+    if (!done) return;
+    cards.forEach(([, c]) => seen.add(c));
+    const [lp, lc] = cards[0], b = BOMB_OF[led];
+    if (led === H) hlead[lp]++;
+    // 主动吃：领出比这门炸弹还大的牌、自己收下这墩，炸弹还在外面——他在清这门的大牌、逼炸弹，要队友接着回这门
+    else if (b !== null && !forced && st.tricks[ti].w === lp && rank(lc) > rank(b) && !seen.has(b)) cash[lp].add(led);
   });
   const hand = new Set(st.hands[me]);
   const U = new Set();
   for (let c = 0; c < 52; c++) if (!hand.has(c) && !known.has(c)) U.add(c);
   for (const [, c] of st.trick) U.delete(c);
-  return { st, me, par: me ^ 2, cfg, U, voids, first, sig, hand, pub: { base: st.pts, hasbo: st.hasbo, hearts: st.hearts } };
+  return { st, me, par: me ^ 2, cfg, U, voids, first, sig, cash, hlead, hand, pub: { base: st.pts, hasbo: st.hasbo, hearts: st.hearts } };
 }
 const opp = (x, p) => ((p ^ x.me) & 1) === 1;
 const isVoid = (x, p, s) => x.cfg.voids && x.voids[p].has(s);
@@ -1010,6 +1235,25 @@ function slamThreat(x) {
   if (hp < 5) return null;
   for (let q = 0; q < 4; q++) if (h[q] === hp) return opp(x, q) ? q : null;
   return null;
+}
+// 出过的红桃（至少 n 张）全在一个人手里：这人有收满贯的苗头
+function slamLead(x, n) {
+  const h = x.pub.hearts, hp = h[0] + h[1] + h[2] + h[3];
+  if (hp < n) return -1;
+  for (let q = 0; q < 4; q++) if (h[q] === hp) return q;
+  return -1;
+}
+// 对方在收红桃（还没到 slamThreat 那么紧）：缺门时垫一张不带分的小红桃给队友，提早破掉
+function slamRisk(x) {
+  if (!x.cfg.slamIns) return null;
+  let q = slamLead(x, x.cfg.slamIns);
+  if (q < 0) { q = slamLead(x, 2); if (q >= 0 && !x.hlead[q]) q = -1; }   // 他自己主动出过红桃，2 张就算
+  return q >= 0 && opp(x, q) ? q : null;
+}
+// 队友在收满贯：红桃都在他手里（至少 5 张），他还主动出过红桃或者已经收了一大半
+function parSlam(x) {
+  if (!x.cfg.slamSup) return false;
+  return slamLead(x, 5) === x.par && (x.hlead[x.par] > 0 || x.pub.hearts[x.par] >= 7);
 }
 function botChoose(st, me, lvl) {
   const cfg = LEVELS[lvl] || LEVELS.hard;
@@ -1074,11 +1318,17 @@ function leadOptions(x) {
       } else if (hand.has(b) && cfg.guard) { v -= 3; cons.push([3, `这门有你的${BNAME[b]}，留着小牌护着它`]); }
     }
     if (ovoid) { v -= 1 + 4 * pw; cons.push([1 + 4 * pw, sigVoid(x, voidOpp, s) && !isVoid(x, voidOpp, s) ? `${rel(me, voidOpp)}开过${SUITNAME[s]}2，多半没这门了，会往你们身上垫分` : `${rel(me, voidOpp)}没有${SUITNAME[s]}了，会往你或队友身上垫分`]); }
-    else if (pvoid) { v += 2 * (1 - pw); if (pw < 0.5) why = sigVoid(x, par, s) && !isVoid(x, par, s) ? `队友开过${SUITNAME[s]}2，回这门让他垫牌` : `队友没有${SUITNAME[s]}了，出这门让他垫分`; }
+    let conv = '';
+    if (!ovoid && pvoid) { v += 2 * (1 - pw); if (pw < 0.5) { why = sigVoid(x, par, s) && !isVoid(x, par, s) ? `队友开过${SUITNAME[s]}2，回这门让他垫牌` : `队友没有${SUITNAME[s]}了，出这门让他垫分`; conv = 'pvoid'; } }
+    // 队友主动拿大牌吃过这门（比炸弹大的牌）：他在清大牌、逼炸弹，接着帮他回这门
+    if (cfg.cashRet && s !== H && b !== null && x.cash[par].has(s) && U.has(b) && !hand.has(b) && !ovoid) {
+      v += 2.6 * (1 - pw);
+      if (pw < 0.5) { why = `队友主动拿${SUITNAME[s]}大牌吃了一墩，接着帮他回${SUITNAME[s]}`; conv = 'cash'; }
+    }
     // 回牌：队友第一手主动出的那门，多半是他的短门
     if (cfg.ret && s !== H && x.first[par] === s && !ovoid && !pvoid) {
       v += 1.2 * (1 - pw);
-      if (pw < 0.5) why = `队友先出的${SUITNAME[s]}，帮他回这门`;
+      if (pw < 0.5 && !conv) { why = `队友先出的${SUITNAME[s]}，帮他回这门`; conv = 'ret'; }
     }
     // 对手先出的那门不帮他回，除非别的门更难打
     if (cfg.avoidOpp && !ovoid && others.some(q => opp(x, q) && x.first[q] === s)) { v -= 1; cons.push([1, '这门是对手先出的，别帮他回']); }
@@ -1087,7 +1337,7 @@ function leadOptions(x) {
     if (shortOk) { v += mybomb ? 1 : 0.6; if (!why) why = mybomb ? `先把${SUITNAME[s]}出完，好做断门垫炸弹` : `先把${SUITNAME[s]}打空，以后好垫牌`; }
     if (!why) why = pw < 0.35 ? '出小牌，自己不容易收这墩' : '几门里这门相对安全';
     cons.sort((p, q) => q[0] - p[0]);
-    opts.push({ c: low, v, why, con: cons.length ? cons[0][1] : '' });
+    opts.push({ c: low, v, why, con: cons.length ? cons[0][1] : '', conv });
     // 走大牌：这门的炸弹已经出了（或在自己手里），又没人断这门，趁早把大牌出掉
     const bombGone = !U.has(b) && !hand.has(b);
     const bombMine = cfg.cash && hand.has(b) && high > b;
@@ -1096,6 +1346,14 @@ function leadOptions(x) {
       if (cfg.cash && x.st.tricks.length <= 6) v2 += 0.3;
       if (bombMine) v2 -= 0.4;
       opts.push({ c: high, v: v2, why: bombMine ? `${BNAME[b]}在你手里，先把比它大的${SUITNAME[s]}走掉` : `${BNAME[b]}已经出了，趁机把${SUITNAME[s]}大牌出掉`, con: '' });
+    }
+    // 自己主动吃：比炸弹大的牌多、护着的小牌少，趁大家都还有这门，先拿最大的吃一墩（队友看到会接着回这门）
+    if (cfg.selfCash && s !== H && b !== null && U.has(b) && !hand.has(b) && hot === 1 && !ovoid && !pvoid && x.st.tricks.length <= 6) {
+      const above = cs.filter(c => c > b).length, below = cs.length - above;
+      const top = cs[cs.length - 1];
+      if (above && below <= 1 && ![...U].some(u => suit(u) === s && u > top) && !others.some(q => likelyVoid(x, q, s))) {
+        opts.push({ c: top, v: 0.8 + 0.5 * above - 0.6 * below + Math.random() * 0.1, why: `${SUITNAME[s]}大牌多、小牌少，趁大家都还有${SUITNAME[s]}，主动拿${nm(top)}吃一墩，队友会接着回这门`, con: '', conv: '' });
+      }
     }
   }
   return opts.sort((p, q) => q.v - p.v);
@@ -1110,7 +1368,7 @@ function botLead(x) {
     }
   }
   const o = leadOptions(x)[0];
-  return { c: o.c, why: o.why };
+  return { c: o.c, why: o.why, conv: o.conv || '', who: [x.par] };
 }
 // 这一墩安不安全：桌上没分、没波，后面的人都得跟这门（垫不了分），这门的炸弹也来不了
 function cleanTrick(x, led, T, tbo, after, card) {
@@ -1131,6 +1389,12 @@ function botFollow(x, legal, wp, wc, after) {
   const threat = slamThreat(x);
   if (threat !== null && led === H && (wp === threat || after.includes(threat))) {
     return over.length ? { c: over[over.length - 1], why: '对方快收全红了，抢下这墩红桃' } : { c: under[0], why: '压不过，留着大红桃以后破满贯' };
+  }
+  // 自己主动吃过这门（队友在回）：干净的一墩接着用最大的拿下，把这门的大牌走完
+  if (cfg.cashFollow && x.cash[me].has(led) && over.length) {
+    const top = over[over.length - 1];
+    const boss = ![...x.U].some(u => suit(u) === led && u > top);
+    if (boss && top !== b && b !== null && x.U.has(b) && top > b && cleanTrick(x, led, T, tbo, after, top)) return { c: top, why: `队友在回${SUITNAME[led]}，干净的一墩，接着走${nm(top)}` };
   }
   // 不攒大牌：干净的一墩，用这门最大的牌拿下来（它迟早要赢一墩，趁现在没分）
   if (cfg.cash && over.length && under.length) {
@@ -1188,21 +1452,33 @@ function botFollow(x, legal, wp, wc, after) {
 function botDiscard(x, wp, wc, after) {
   const { hand, par, pub, cfg, me } = x;
   const threat = slamThreat(x);
+  const psl = parSlam(x);
   const hs = [...hand].filter(c => suit(c) === H).sort((p, q) => p - q);
   if (opp(x, wp)) {
     const safe = !after.includes(par) || pForced(x, par, wc) < 0.3;
     if (safe) {
       if (threat !== null) {
-        if (wp === threat) return botWorst(x, false, '对方快收全红了，别给他红桃', wp);
-        if (hs.length) return { c: hs[hs.length - 1], why: '把红桃垫给别人，破他的满贯' };
+        if (wp === threat) return Object.assign(botWorst(x, false, '对方快收全红了，别给他红桃', wp), { conv: 'noheart', who: [threat] });
+        if (hs.length) return { c: hs[hs.length - 1], why: '把红桃垫给别人，破他的满贯', conv: 'brk', who: [threat, par] };
       }
+      if (psl) return Object.assign(botWorst(x, false, '队友在收满贯，红桃别垫给对手', wp), { conv: 'noheart', who: [par] });
+      const risk = slamRisk(x);
+      if (risk !== null && wp === risk) return Object.assign(botWorst(x, false, '对方在收红桃，别再给他红桃', wp), { conv: 'noheart', who: [risk] });
       return botWorst(x, true, undefined, wp);
     }
     const r = botShed(x);
     if (!PUBLIC.has(r.c)) r.why = '队友在后面可能被迫压上，先不垫分';
     return r;
   }
-  if (threat !== null && wp !== threat && hs.length) return { c: hs[0], why: '给队友一张小红桃，破对方的满贯' };
+  // 队友在收满贯：把红桃（先大的）垫给他
+  if (psl && hs.length) return { c: hs[hs.length - 1], why: '队友在收满贯，把红桃垫给他', conv: 'sup', who: [par] };
+  if (threat !== null && wp !== threat && hs.length) return { c: hs[0], why: '给队友一张小红桃，破对方的满贯', conv: 'brk', who: [threat, par] };
+  // 对方在收红桃：垫一张不带分的小红桃（2、3、4）给队友，提早破掉他的满贯
+  const risk = slamRisk(x);
+  if (risk !== null) {
+    const zero = hs.filter(c => PTS[c] === 0);
+    if (zero.length) return { c: zero[0], why: `${rel(me, risk)}在收红桃，垫一张不带分的小红桃给队友，破他的满贯`, conv: 'brk', who: [risk, par] };
+  }
   // 破分：队友稳赢、分比你少，垫一张大红桃给他
   if (cfg.split && wp === par && !pub.hasbo[par] && !canBeat(x, wc, after)) {
     const T = x.st.trick.reduce((a, t) => a + PTS[t[1]], 0);
@@ -1299,7 +1575,14 @@ const copyWorld = w => ({ phase: w.phase, turn: w.turn, first7: w.first7, trick:
 function sampleWorld(st, me, x, cfg) {
   const need = [0, 1, 2, 3].map(q => (q === me ? 0 : st.hands[q].length));
   const cards = [...x.U];
-  const bias = (q, c) => (cfg && cfg.shortBias && x.first[q] === suit(c) ? cfg.shortBias : 1);   // 第一手先出的花色多半是短门
+  const bias = (q, c) => {
+    let w = cfg && cfg.shortBias && x.first[q] === suit(c) ? cfg.shortBias : 1;   // 第一手先出的花色多半是短门
+    if (cfg && cfg.cashBias && x.cash[q].has(suit(c))) {               // 主动拿大牌吃过这门的人：多半没有这门的炸弹，比炸弹大的牌多半还有
+      const b = BOMB_OF[suit(c)];
+      if (c === b) w *= cfg.cashBias; else if (c > b && cfg.cashHigh) w *= cfg.cashHigh;
+    }
+    return w;
+  };
   for (let tries = 0; tries < 60; tries++) {
     const soft = tries < 30;                                         // 先照顾开 2 的信号，发不出来再放开
     const order = cards.map(c => [c, Math.random(), [0, 1, 2, 3].filter(q => q !== me && !isVoid(x, q, suit(c)) && !(soft && sigVoid(x, q, suit(c))))])
@@ -1322,6 +1605,8 @@ function sampleWorld(st, me, x, cfg) {
   }
   return null;
 }
+const CONV_WHY = { cash: '队友主动拿大牌吃过这门，接着帮他回', ret: '帮队友回他先出的那门', pvoid: '出队友没有的那门，让他垫牌',
+  brk: '垫红桃给别人，破对方的满贯', sup: '队友在收满贯，把红桃垫给他', noheart: '红桃不给对手' };
 function pimcChoose(st, me, cfg) {
   const base = botChoose(st, me, 'roll');
   const legal = legalMoves(st, me);
@@ -1359,6 +1644,21 @@ function pimcChoose(st, me, cfg) {
   let best = rep !== undefined && sum.has(rep) ? rep : cands[0];
   for (const c of cands) if (sum.get(c) > sum.get(best) + 1e-9) best = c;
   if (best === rep) return base;
+  // 回牌、破满贯这些是约定（人看得懂）：先在约定里挑推演最好的那张；约定外的只有明显更好（平均多赚 convM 份）才改
+  const human = (base.who || []).some(q => st.seats && st.seats[q] && st.seats[q].kind === 'human');
+  if (base.conv && cfg.convM && (cfg.convAll || human)) {
+    const ok = base.conv === 'noheart' ? (c => suit(c) !== H) : (c => suit(c) === suit(base.c));
+    if (!ok(best)) {
+      let bi;
+      for (const c of cands) if (ok(c) && (bi === undefined || sum.get(c) > sum.get(bi))) bi = c;
+      const M = base.conv === 'cash' ? (cfg.convMcash || cfg.convM) : cfg.convM;   // 队友明说要回的那门，更要照顾
+      if (bi !== undefined && (sum.get(best) - sum.get(bi)) / n < M) {
+        if (bi === rep) return base;
+        const v = sum.get(bi) / n;
+        return { c: bi, why: `${CONV_WHY[base.conv] || base.why}：往后推演了 ${n} 种发牌，出${nm(bi)}最好（平均 ${(v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1)} 份）` };
+      }
+    }
+  }
   const fmt = v => (v >= 0 ? '+' : '−') + Math.abs(v / n).toFixed(1);
   const alt = rep !== undefined && sum.has(rep) ? `，出${nm(base.c)}平均 ${fmt(sum.get(rep))} 份` : '';
   return { c: best, why: `往后推演了 ${n} 种发牌：这样出平均 ${fmt(sum.get(best))} 份${alt}（+ 是对方挨罚）` };
@@ -1643,6 +1943,7 @@ function clockSecs() { return Math.max(0, Math.ceil((deadline() - Math.max(Date.
 function tickClock() {
   const V = view(), st = V.st;
   const mc = $('#myClock');
+  if (spPaused()) { mc.hidden = true; if (clock.key) clock.start = Date.now(); return; }
   if (!st || st.phase !== 'play' || st.seats[st.turn].kind !== 'human' || Date.now() < hold.until || !clock.key) {
     mc.hidden = true;
     return;
@@ -1686,7 +1987,7 @@ function onTimeout(V, st) {
   const r = botChoose(SP, seat, 'normal');
   sel = null;
   const prev = SP;
-  SP = applyMove(SP, seat, r.c);
+  SP = applyMove(SP, seat, r.c, 'a');
   SP.lastAuto = { seat, c: r.c, v: SP.v };
   saveSP();
   toast(`时间到，系统替你出了 ${nm(r.c)}`);
@@ -1694,9 +1995,112 @@ function onTimeout(V, st) {
 }
 setInterval(tickClock, 250);
 
+/* ================= 牌谱 ================= */
+// 每打完一把记一份牌谱：发的牌、每一手谁出的什么（h 人出的、b 电脑、a 超时系统代出）、结果。
+// 存在这台手机里（最多 400 把）；网站版顺手传到联机服务器，在 Claude 里打开时存到页面数据库。
+// 以后拿来对比人和电脑的打法：哪里打得好就学过来，哪里失误就标出来，一轮一轮把电脑练强。
+const REC_KEY = 'gz-recs', REC_MAX = 400, BUILD = 'v7';
+const REC_APP = 'duel';
+const RNET = window.__gzNet || null;
+let recDid = null, recBusy = false;
+function recDevice() {
+  if (recDid) return recDid;
+  recDid = (RNET && RNET.uid) || loadJSON('gz-did', null);
+  if (!recDid) { recDid = 'd' + Math.random().toString(36).slice(2, 12); saveJSON('gz-did', recDid); }
+  return recDid;
+}
+function recLoad() { const a = loadJSON(REC_KEY, []); return Array.isArray(a) ? a : []; }
+function recStore(a) {
+  for (let k = 0; k < 6 && a.length; k++) {
+    try { localStorage.setItem(REC_KEY, JSON.stringify(a)); return; } catch (e) { a = a.slice(Math.ceil(a.length / 4)); }   // 存满了：丢掉最早的
+  }
+}
+function dealHash(deal) { let h = 2166136261; for (const hd of deal) for (const c of hd) { h ^= c + 1; h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); }
+function recDeal(st) {
+  if (st.deal) return st.deal.map(h => h.slice());
+  const d = st.hands.map(h => h.slice());
+  for (const t of st.tricks) for (const [p, c] of t.cards) d[p].push(c);
+  for (const [p, c] of (st.cut || [])) d[p].push(c);
+  return d.map(h => h.sort((a, b) => a - b));
+}
+function recName(st, V, i) {
+  const s = (st.seats || [])[i] || {};
+  if (s.kind === 'bot') return s.name ? s.name + '（电脑代打）' : '电脑';
+  if (V.mp) return s.name || (s.uid === MP.uid ? (RNET ? RNET.getName() : '') : MP.names[i] !== '你' ? MP.names[i] : '') || '';
+  return i === 0 ? ((RNET && RNET.getName()) || '我') : '';
+}
+function makeRecord(st, V) {
+  const deal = recDeal(st);
+  if (deal.length !== 4 || deal.some(h => h.length !== 13)) return null;
+  const plays = [];
+  for (const t of st.tricks) for (const [p, c] of t.cards) plays.push([p, c]);
+  for (const [p, c] of (st.cut || [])) plays.push([p, c]);
+  const now = new Date(), day = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const room = V.mp ? MP.code : null;
+  const r = st.result || {};
+  return {
+    v: 1, id: `${day}-${room ? 'r' + room : recDevice()}-${dealHash(deal)}`, app: REC_APP, bot: BUILD, t: Date.now(),
+    mode: V.mp ? 'mp' : 'sp', room, dev: recDevice(), me: V.spect ? -1 : V.my,
+    lvl: V.mp ? ((MP.doc && MP.doc.lvl) || 'hard') : SET.lvl, timer: V.mp ? ((MP.doc && MP.doc.timer) || 0) : (Number(SET.timer) || 0),
+    hand: st.hand, leader: st.leader0, first7: !!st.first7,
+    seats: [0, 1, 2, 3].map(i => { const s = (st.seats || [])[i] || {}; return { k: s.kind === 'human' ? 'h' : s.kind === 'bot' ? 'b' : 'e', n: recName(st, V, i), u: s.uid || s.was || (!V.mp && i === 0 ? recDevice() : null) }; }),
+    deal, plays, by: st.by && st.by.length === plays.length ? st.by : '', surr: st.surrBy === undefined ? null : st.surrBy,   // 对不上（旧版本出过牌）就不记谁出的
+    res: { w: r.winTeam === undefined ? null : r.winTeam, k: r.kind || '', sc: r.scores || [], pen: r.pen || 0 },
+  };
+}
+function recordHand(st) {
+  try {
+    const rec = makeRecord(st, view());
+    if (!rec) return;
+    const a = recLoad();
+    if (a.some(x => x.id === rec.id)) return;
+    a.push(rec);
+    recStore(a.length > REC_MAX ? a.slice(-REC_MAX) : a);
+    setTimeout(recUpload, 2000);
+  } catch (e) { /* 记不了就算了，不影响打牌 */ }
+}
+async function recUpload() {
+  if (recBusy) return;
+  recBusy = true;
+  try {
+    const a = recLoad(), me = recDevice(), todo = a.filter(r => !r.up && r.dev === me);
+    if (!todo.length) return;
+    const done = new Set();
+    if (RNET && RNET.putRec) {                        // 网站版：传到联机服务器
+      for (const r of todo.slice(-30)) { try { await RNET.putRec(r.id, r); done.add(r.id); } catch (e) { break; } }
+    } else if (window.claude && typeof window.claude.use === 'function') {   // Claude 里：存到这个页面的数据库，一天一份
+      const db = await window.claude.use('db');
+      if (db) {
+        for (const day of new Set(todo.map(r => r.id.slice(0, 8)))) {
+          const all = a.filter(r => r.dev === me && r.id.slice(0, 8) === day);
+          for (let k = 0; k * 100 < all.length; k++) {
+            const part = all.slice(k * 100, k * 100 + 100);
+            if (!part.some(r => !r.up)) continue;
+            await db.doc(`recs/${day}-${me}-${k + 1}`).set({ day, dev: me, app: REC_APP, n: part.length, recs: part.map(r => { const o = Object.assign({}, r); delete o.up; return o; }) });
+            part.forEach(r => done.add(r.id));
+          }
+        }
+      }
+    }
+    if (done.size) { const b = recLoad(); b.forEach(r => { if (done.has(r.id)) r.up = 1; }); recStore(b); }
+  } catch (e) { /* 下一把再传 */ } finally { recBusy = false; }
+}
+function recExport() {
+  const a = recLoad();
+  if (!a.length) { toast('还没有牌谱，打完一把就有了'); return; }
+  const blob = new Blob([JSON.stringify({ app: REC_APP, t: Date.now(), n: a.length, recs: a })], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const el = document.createElement('a');
+  el.href = url; el.download = `拱猪牌谱-${new Date().toISOString().slice(0, 10)}-${a.length}把.json`;
+  document.body.appendChild(el); el.click(); el.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+  toast(`导出了 ${a.length} 把牌谱`);
+}
+
 /* ================= 状态变化 ================= */
 function onState(prev, next) {
   if (!next) return;
+  if (next.phase === 'end' && (!prev || prev.phase !== 'end' || prev.hand !== next.hand)) recordHand(next);
   if (!prev || prev.hand !== next.hand) {
     clearHold(); sel = null; lastRenderedTrick = '';
     if (prev && next.hand > prev.hand && next.phase === 'play') closeSheet('resultSheet');   // 别人已经点了下一把
@@ -1741,6 +2145,7 @@ function sweep(w) {
 
 function scheduleBots() {
   clearTimeout(botTimer);
+  if (spPaused()) return;
   const V = view(), st = V.st;
   if (!st || st.phase !== 'play') return;
   if (st.seats[st.turn].kind !== 'bot') return;
@@ -1757,7 +2162,7 @@ function scheduleBots() {
     if (!SP || SP.v !== v || SP.phase !== 'play' || SP.seats[SP.turn].kind !== 'bot') return;
     const r = botChoose(SP, SP.turn, SET.lvl);
     const prev = SP;
-    SP = applyMove(SP, SP.turn, r.c);
+    SP = applyMove(SP, SP.turn, r.c, 'b');
     saveSP();
     onState(prev, SP);
   }, base);
@@ -1776,7 +2181,7 @@ function humanPlay(c) {
     return;
   }
   const prev = SP;
-  SP = applyMove(SP, V.my, c);
+  SP = applyMove(SP, V.my, c, 'h');
   saveSP();
   onState(prev, SP);
 }
@@ -1808,10 +2213,10 @@ document.addEventListener('click', e => {
   const c = e.target.closest('[data-close]');
   if (c) closeSheet(c.dataset.close);
   const sh = e.target.classList && e.target.classList.contains('sheet') ? e.target : null;
-  if (sh && sh.id !== 'resultSheet' && sh.id !== 'penaltySheet' && sh.id !== 'surrAskSheet') sh.hidden = true;
+  if (sh && sh.id !== 'resultSheet' && sh.id !== 'penaltySheet' && sh.id !== 'surrAskSheet' && sh.id !== 'mpSheet') sh.hidden = true;
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') document.querySelectorAll('.sheet:not([hidden])').forEach(s => { if (s.id !== 'resultSheet' && s.id !== 'penaltySheet' && s.id !== 'surrAskSheet') s.hidden = true; });
+  if (e.key === 'Escape') document.querySelectorAll('.sheet:not([hidden])').forEach(s => { if (s.id !== 'resultSheet' && s.id !== 'penaltySheet' && s.id !== 'surrAskSheet' && s.id !== 'mpSheet') s.hidden = true; });
 });
 
 let toastTimer = null;
@@ -1856,8 +2261,8 @@ $('#newBtn').addEventListener('click', () => {
 $('#newYes').addEventListener('click', () => startSP(true));
 $('#newNo').addEventListener('click', () => { $('#newConfirm').hidden = true; });
 $('#leaveBtn').addEventListener('click', () => { closeSheet('menuSheet'); mpExit(true); });
-$('#mpBtn').addEventListener('click', () => { closeSheet('menuSheet'); openMP(); });
-$('#netBtn').addEventListener('click', () => openMP());
+$('#mpBtn').addEventListener('click', () => { closeSheet('menuSheet'); if (NET && !MP.code) showHome(true); else openMP(); });
+$('#netBtn').addEventListener('click', () => { if (NET && !MP.code) showHome(true); else openMP(); });
 $('#roomPill').addEventListener('click', () => openMP());
 
 function syncSettingsUI() {
@@ -1908,6 +2313,7 @@ async function mpInit() {
 
 async function openMP(code) {
   openSheet('mpSheet');
+  const h2 = $('#mpSheet h2'); if (h2 && !MP.doc) h2.textContent = '和朋友打';
   if (MP.doc && MP.code) { renderLobby(); return; }
   $('#mpBody').innerHTML = `<p class="mute">${NET ? '正在连接联机服务器…' : '正在连接…'}</p>`;
   const ok = await mpInit();
@@ -1923,6 +2329,7 @@ function renderNetFail(code) {
   body.innerHTML = `<p>连不上联机服务器。</p>
     <ul><li>看看手机有没有网，换成 Wi-Fi 或流量再试。</li><li>在微信里打不开的话，点右上角"···"，选"在浏览器打开"。</li></ul>
     <div class="row" style="margin-top:12px"><button class="btn primary" id="netRetry" type="button">再试一次</button><button class="btn ghost" data-close="mpSheet" type="button">关闭</button></div>`;
+  const h2 = $('#mpSheet h2'); if (h2) h2.textContent = '和朋友打';
   $('#netRetry').onclick = () => openMP(code);
 }
 function saveMyName() {
@@ -1938,8 +2345,8 @@ function myRoomName() {
   return (s && s.name) || (NET ? NET.getName() : '') || '';
 }
 function teamLine(d) {
-  const me = MP.mySeat, nmOf = i => { const s = d.seats[i]; return s.kind === 'human' ? (s.uid === MP.uid ? '你' : (s.name || MP.names[i] || '朋友')) : s.kind === 'bot' ? '电脑' : '空位'; };
-  return `你和${nmOf((me + 2) % 4)}（${(me + 2) % 4 + 1}号）一队，对手是${nmOf((me + 1) % 4)}、${nmOf((me + 3) % 4)}。`;
+  const me = MP.mySeat, nmOf = i => { const s = d.seats[i]; return s.kind === 'human' ? `${s.uid === MP.uid ? '你' : (s.name || MP.names[i] || '朋友')}（${i + 1}号）` : s.kind === 'bot' ? `电脑（${i + 1}号）` : `${i + 1}号空位`; };
+  return `你和${nmOf((me + 2) % 4)}一队，对手是${nmOf((me + 1) % 4)}、${nmOf((me + 3) % 4)}。`;
 }
 async function mpRename(n) {
   if (NET) NET.setName(n);
@@ -1995,15 +2402,20 @@ function renderLobby(okArg, code) {
   const d = MP.doc;
   const isHost = d.host === MP.uid;
   const seated = MP.mySeat !== null;
-  const seatsHTML = d.seats.map((s, i) => {
-    const team = (i & 1) === 0 ? '甲队' : '乙队';
-    let occ, cls = '';
+  const playing = d.status === 'play';
+  const base = seated ? MP.mySeat : 0;
+  const POSC = ['s', 'e', 'n', 'w'];
+  const tile = i => {
+    const s = d.seats[i], team = (i & 1) === 0 ? 'a' : 'b';
+    let name, cls = `lseat ${POSC[(i - base + 4) % 4]} team-${team}`;
+    const sub = [];
     if (s.kind === 'human') {
-      occ = s.uid === MP.uid ? `你（${myRoomName() || '没填名字'}）` : (MP.names[i] || '朋友');
-      if (s.uid === d.host) occ += ' · 房主';
-    } else if (s.kind === 'bot') occ = '电脑';
-    else { occ = '空位'; cls = 'empty'; }
-    const online = s.kind === 'human' && s.uid !== MP.uid && MP.online.has(s.uid) ? ' · 在线' : '';
+      name = s.uid === MP.uid ? `你（${myRoomName() || '没填名字'}）` : (MP.names[i] || s.name || '朋友');
+      if (s.uid === d.host) sub.push('房主');
+      if (s.uid === MP.uid) cls += ' me';
+      else sub.push(MP.online.has(s.uid) ? '<span class="on">● 在线</span>' : '不在线');
+    } else if (s.kind === 'bot') { name = s.was && s.name ? `${s.name}（电脑代打）` : '电脑'; cls += ' bot'; }
+    else { name = '等人来'; cls += ' empty'; }
     let acts = '';
     if (d.status === 'lobby') {
       if (s.kind !== 'human') acts += `<button class="seat-btn" data-sit="${i}" type="button">坐这里</button>`;
@@ -2014,24 +2426,36 @@ function renderLobby(okArg, code) {
       if (s.kind === 'bot' && s.was === MP.uid) acts += `<button class="seat-btn" data-back="${i}" type="button">坐回去</button>`;
     } else if (NET && s.kind === 'bot' && !s.was) acts += `<button class="seat-btn" data-takebot="${i}" type="button">替电脑坐</button>`;
     if (NET && s.kind === 'human' && s.uid === MP.uid) acts += '<button class="seat-btn" data-rename type="button">改名</button>';
-    return `<div class="seat-row"><span class="no">${i + 1}号</span><span class="team">${team}</span><span class="occ ${cls}">${esc(occ)}${online}</span>${acts}</div>`;
-  }).join('');
-  const playing = d.status === 'play';
-  body.innerHTML = `<div class="row" style="justify-content:space-between;align-items:flex-end">
-      <div><div class="mute">房间号</div><div class="code" id="codeText">${esc(d.code)}</div></div>
-      <button class="btn" id="copyCode" type="button">复制房间号</button></div>
-    ${NET ? `<div class="invite"><div class="row"><button class="btn primary" id="copyLink" type="button">复制邀请链接</button>${navigator.share ? '<button class="btn" id="shareLink" type="button">分享…</button>' : ''}</div>
-      <span class="mute">发到微信群，朋友点开链接就进这个房间。</span>
-      <input type="text" id="linkBox" readonly value="${esc(inviteLink(d.code))}" aria-label="邀请链接"></div>` : ''}
-    <p class="mute" style="margin-top:8px">1号和3号一队，2号和4号一队，按 1→2→3→4 出牌。${playing ? '这桌已经开打了。' : '人齐了就开始，空位会由电脑补上。'}</p>
-    <div class="row" style="margin-top:8px"><span class="mute">每人每手出牌时间</span>${isHost ? `<div class="seg" id="mpTimer" role="group" aria-label="出牌时间"><button type="button" data-v="15" aria-pressed="${(d.timer || 30) === 15}">15 秒</button><button type="button" data-v="30" aria-pressed="${(d.timer || 30) === 30}">30 秒</button></div>` : `<b>${d.timer || 30} 秒</b><span class="mute">（房主定）</span>`}</div>
-    <div class="seats">${seatsHTML}</div>
-    ${seated ? `<p class="mute" style="margin:-2px 0 10px">${esc(teamLine(d))}</p>` : ''}
-    <div class="row" id="renameRow" hidden style="margin-bottom:10px"><input type="text" id="renameBox" maxlength="8" aria-label="新名字"><button class="btn" id="renameOk" type="button">改好了</button></div>
-    <div class="row">${playing ? '<button class="btn primary" id="mpBack" type="button">回到牌桌</button>' : `<button class="btn primary" id="mpStart" type="button" ${seated ? '' : 'disabled'}>开始</button>`}
-      <button class="btn ghost" id="mpLeave" type="button">离开房间</button></div>
-    ${!seated && !playing ? '<p class="mute" style="margin-top:8px">先选一个座位坐下。</p>' : ''}
-    ${playing ? '<p class="mute" style="margin-top:8px">有人掉线卡住了，可以点"让电脑接手"让电脑替他出；他回来后点"坐回去"。</p>' : (isHost ? '<p class="mute" style="margin-top:8px">电脑的牌由在线的人这边代出，开打后至少留一个人开着页面。</p>' : '')}`;
+    return `<div class="${cls}"><div class="lno">${i + 1}号<span class="lteam">${team === 'a' ? '甲队' : '乙队'}</span></div>` +
+      `<div class="lname">${esc(name)}${s.kind === 'empty' ? '<i class="dots"></i>' : ''}</div>` +
+      (sub.length ? `<div class="lsub">${sub.join(' · ')}</div>` : '') + (acts ? `<div class="lacts">${acts}</div>` : '') + '</div>';
+  };
+  const empties = d.seats.filter(s => s.kind === 'empty').length;
+  const humans = d.seats.filter(s => s.kind === 'human').length;
+  const h2 = $('#mpSheet h2');
+  if (h2) h2.textContent = playing ? `${d.code} 号房间 · 已经开打` : (empties ? `等朋友来（${humans} 人到了）` : '人齐了');
+  body.innerHTML = `<div class="lobby">
+    <div class="lobby-side lobby-card">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div><div class="mute">房间号</div><div class="code" id="codeText">${esc(d.code)}</div></div>
+        <button class="btn" id="copyCode" type="button">复制房间号</button></div>
+      ${NET ? `<div class="invite"><div class="row"><button class="btn primary" id="copyLink" type="button">复制邀请链接</button>${navigator.share ? '<button class="btn" id="shareLink" type="button">分享…</button>' : ''}</div>
+        <span class="mute">发到微信群，朋友点开链接就进这个房间。</span>
+        <input type="text" id="linkBox" readonly value="${esc(inviteLink(d.code))}" aria-label="邀请链接"></div>` : ''}
+    </div>
+    <div class="lobby-main">
+      <div class="ltable">${tile((base + 2) % 4)}${tile((base + 3) % 4)}<div class="lmid">按 1→2→3→4 出牌<br>1号3号一队<br>2号4号一队</div>${tile((base + 1) % 4)}${tile(base)}</div>
+      ${seated ? `<p class="mute" style="margin:10px 2px 0">${esc(teamLine(d))}</p>` : ''}
+      <div class="row" id="renameRow" hidden style="margin-top:10px"><input type="text" id="renameBox" maxlength="8" aria-label="新名字"><button class="btn" id="renameOk" type="button">改好了</button></div>
+    </div>
+    <div class="lobby-side lobby-go">
+      <div class="row"><span class="mute">每人每手出牌时间</span>${isHost && !playing ? `<div class="seg" id="mpTimer" role="group" aria-label="出牌时间"><button type="button" data-v="15" aria-pressed="${(d.timer || 30) === 15}">15 秒</button><button type="button" data-v="30" aria-pressed="${(d.timer || 30) === 30}">30 秒</button></div>` : `<b>${d.timer || 30} 秒</b>${isHost ? '' : '<span class="mute">（房主定）</span>'}`}</div>
+      <div class="lobby-start">${playing ? '<button class="btn primary big" id="mpBack" type="button">回到牌桌</button>' : `<button class="btn primary big" id="mpStart" type="button" ${seated ? '' : 'disabled'}>${empties ? `开打（${empties} 个空位电脑补上）` : '人齐了，开打'}</button>`}</div>
+      ${!seated && !playing ? '<p class="mute" style="margin:0">先点一个座位"坐这里"。</p>' : ''}
+      ${playing ? '<p class="mute" style="margin:0">有人掉线卡住了，可以点他座位上的"让电脑接手"；他回来后点"坐回去"。</p>' : '<p class="mute" style="margin:0">谁都可以点开打。电脑的牌由在线的人这边代出，开打后至少留一个人开着页面。</p>'}
+      <button class="btn ghost" id="mpLeave" type="button">离开房间</button>
+    </div>
+  </div>`;
   body.querySelectorAll('[data-sit]').forEach(b => b.onclick = () => guard(() => mpSit(Number(b.dataset.sit))));
   body.querySelectorAll('[data-bot]').forEach(b => b.onclick = () => guard(() => mpSeatKind(Number(b.dataset.bot), 'bot')));
   body.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => guard(() => mpSeatKind(Number(b.dataset.clear), 'empty')));
@@ -2158,12 +2582,18 @@ function acceptDoc(d, force) {                       // force：断网时自己�
   }
   const prevGame = MP.doc && MP.doc.game ? MP.doc.game : null;
   MP.doc = clone(d);
+  const hum = new Set(MP.doc.seats.filter(s => s.kind === 'human' && s.uid).map(s => s.uid));
+  if (MP.prevHum && MP.doc.status === 'lobby') {                 // 等人时有人进来：提示一声
+    for (const u of hum) if (!MP.prevHum.has(u) && u !== MP.uid) { const s0 = MP.doc.seats.find(x => x.uid === u); toast(`${(s0 && s0.name) || '有朋友'}进来了`); }
+  }
+  MP.prevHum = hum;
   const idx = MP.doc.seats.findIndex(s => s.kind === 'human' && s.uid === MP.uid);
   MP.mySeat = idx >= 0 ? idx : null;
   resolveNames();
   if (MP.doc.status === 'play' && MP.doc.game) {
     if (MODE !== 'mp') {
       MODE = 'mp'; clearHold(); resultShownKey = null; lastRenderedTrick = '';
+      if (HOME) showHome(false);
       closeSheet('mpSheet'); closeSheet('resultSheet');
       onState(null, MP.doc.game);
     } else onState(!force && prevGame && prevGame.hand <= MP.doc.game.hand ? prevGame : null, MP.doc.game);
@@ -2232,7 +2662,7 @@ async function mpHumanMove(v, p, c, auto) {
       if (!cur || !cur.game) return null;
       const g = cur.game;
       if (g.v !== v || g.turn !== p || g.seats[p].uid !== MP.uid) return null;
-      cur.game = applyMove(g, p, c);
+      cur.game = applyMove(g, p, c, auto ? 'a' : 'h');
       if (auto) cur.game.lastAuto = { seat: p, c, v: cur.game.v };
       if (cur.miss && cur.miss[p]) { cur.miss = Object.assign({}, cur.miss); cur.miss[p] = 0; }
       return cur;
@@ -2246,7 +2676,7 @@ async function mpAutoMove(v, seat) {
       const g = cur.game;
       if (g.v !== v || g.phase !== 'play' || g.turn !== seat || g.seats[seat].kind !== 'human') return null;
       const r = botChoose(g, seat, 'normal');
-      cur.game = applyMove(g, seat, r.c);
+      cur.game = applyMove(g, seat, r.c, 'a');
       cur.game.lastAuto = { seat, c: r.c, v: cur.game.v };
       cur.miss = Object.assign({}, cur.miss);
       cur.miss[seat] = (cur.miss[seat] || 0) + 1;
@@ -2351,7 +2781,7 @@ async function mpBotMove(v) {
       const g = cur.game;
       if (g.v !== v || g.phase !== 'play' || g.seats[g.turn].kind !== 'bot') return null;
       const r = botChoose(g, g.turn, cur.lvl || 'hard');
-      cur.game = applyMove(g, g.turn, r.c);
+      cur.game = applyMove(g, g.turn, r.c, 'b');
       return cur;
     }, true);
   } catch (e) { scheduleBots(); }
@@ -2366,6 +2796,7 @@ async function mpNext(hand) {
 }
 
 function mpDetach() {
+  MP.prevHum = null;
   if (MP.unsub) { try { MP.unsub(); } catch (e) { /* 已断开 */ } }
   MP.unsub = null;
   if (MP.nroom) { MP.nroom.leave().catch(() => {}); MP.nroom = null; }
@@ -2392,6 +2823,67 @@ async function mpExit(freeSeat) {
     if (!SP) SP = newMatch(clone(SP_SEATS));
     onState(null, SP);
   }
+  if (NET) showHome(true);
+}
+
+/* ================= 首页 ================= */
+// 网站版一打开先到首页：开房间等朋友、输房间号加入、和电脑打。朋友点邀请链接进来时，首页上直接问"进不进"。
+// 在首页或房间里等人时，单机那一把先停着（不计时、电脑不出牌）。
+let HOME = false, homeInvite = null;
+const spPaused = () => MODE === 'sp' && (HOME || !!MP.code);
+function showHome(on, invite) {
+  if (!NET) return;
+  HOME = !!on;
+  if (invite !== undefined) homeInvite = invite;
+  $('#home').hidden = !HOME;
+  document.documentElement.classList.toggle('at-home', HOME);
+  if (!HOME) {
+    if (MODE === 'sp' && SP && !MP.code) { syncClock(SP, true); render(); scheduleBots(); }
+    return;
+  }
+  clearTimeout(botTimer);
+  closeSheet('menuSheet'); closeSheet('resultSheet'); closeSheet('penaltySheet'); resultShownKey = null;   // 回到牌桌时结果（和输了的问答）会再弹
+  $('#homeName').value = NET.getName();
+  $('#homeInvite').hidden = !homeInvite;
+  if (homeInvite) $('#homeInvCode').textContent = homeInvite;
+  const midGame = SP && SP.phase === 'play' && (SP.tricks.length || SP.hand > 1);
+  $('#homeSoloSub').textContent = midGame ? `接着打第 ${SP.hand} 把` : '电脑当队友和对手，想打就打';
+  if (!$('#homeFan').childElementCount) $('#homeFan').innerHTML = [PIG, BO, SHEEP].map(c => cardEl(c)).join('');
+  setHomeStatus('');
+}
+function setHomeStatus(t) { const el = $('#homeStatus'); if (el) el.textContent = t || ''; }
+function saveHomeName() {
+  let n = ($('#homeName').value || '').trim().slice(0, 8);
+  if (!n) n = NET.getName() || ('玩家' + (10 + Math.floor(Math.random() * 90)));
+  NET.setName(n);
+  $('#homeName').value = n;
+}
+async function homeGo(action, doing, fail) {
+  if (MP.busy) return;
+  saveHomeName();
+  setHomeStatus('正在连接联机服务器…');
+  if (!(await mpInit())) { setHomeStatus('这里开不了联机房间。'); return; }
+  try { await NET.connect(15000); } catch (e) { setHomeStatus('连不上联机服务器。看看手机有没有网；在微信里打不开，就点右上角"···"选"在浏览器打开"。'); return; }
+  setHomeStatus(doing);
+  await guard(action);
+  if (!MP.doc) { setHomeStatus(fail); return; }
+  homeInvite = null;
+  showHome(false);
+  if (MP.doc.status === 'lobby') { openSheet('mpSheet'); renderLobby(); }
+}
+if (NET) {
+  const joinCode = code => homeGo(() => mpEnter(code), `正在进 ${code} 号房间…`, '没有这个房间号，看看是不是输错了。');
+  $('#homeCreate').addEventListener('click', () => homeGo(mpCreate, '正在开房间…', '房间没开成，再点一次。'));
+  $('#homeJoin').addEventListener('click', () => {
+    const code = ($('#homeCode').value || '').trim();
+    if (!/^\d{4}$/.test(code)) { toast('房间号是 4 位数字'); $('#homeCode').focus(); return; }
+    joinCode(code);
+  });
+  $('#homeCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('#homeJoin').click(); });
+  $('#homeInvGo').addEventListener('click', () => { if (homeInvite) joinCode(homeInvite); });
+  $('#homeInvNo').addEventListener('click', () => { homeInvite = null; $('#homeInvite').hidden = true; try { history.replaceState(null, '', location.pathname); } catch (e) { /* 改不了地址就算了 */ } });
+  $('#homeSolo').addEventListener('click', () => { saveHomeName(); showHome(false); });
+  $('#homeRules').addEventListener('click', () => openSheet('rulesSheet'));
 }
 
 /* 网站版：带 ?room=房间号 打开就进那个房间；刷新、微信切回来时自动回到原来的房间 */
@@ -2400,28 +2892,30 @@ function netStartup() {
   const qc = q && /^\d{4}$/.test(q) ? q : null;
   const saved = loadJSON('gzd-room', null);
   const sc = saved && /^\d{4}$/.test(saved.code) && Date.now() - (saved.t || 0) < 12 * 3600e3 ? saved.code : null;
-  if (qc && qc !== sc) { openMP(qc); return; }
+  if (qc && qc !== sc) { showHome(true, qc); return; }
   const code = qc || sc;
-  if (code) rejoin(code, !!qc);
+  showHome(true);
+  if (code) { setHomeStatus(`正在回到 ${code} 号房间…`); rejoin(code, !!qc); }
 }
 async function rejoin(code, fromLink) {
   try {
-    if (!(await mpInit())) return;
+    if (!(await mpInit())) { setHomeStatus(''); return; }
     await NET.connect(15000);
     const snap = await MP.db.doc('rooms/' + code).get();
     const d = snap.exists ? snap.data() : null;
     const mine = !!(d && d.seats.some(s => (s.kind === 'human' && s.uid === MP.uid) || s.was === MP.uid));
     if (!d || !mine || Date.now() - (d.updatedAt || 0) > 6 * 3600e3) {
       saveJSON('gzd-room', null);
-      if (fromLink) openMP(code);
+      if (fromLink) showHome(true, code); else setHomeStatus('');
       return;
     }
     await guard(() => mpEnter(code));
-    if (!MP.doc) return;
+    if (!MP.doc) { setHomeStatus(''); return; }
     const back = MP.doc.seats.findIndex(s => s.kind === 'bot' && s.was === MP.uid);
     if (MP.mySeat === null && back >= 0 && MP.doc.status === 'play') await guard(() => mpReclaim(back));
+    showHome(false);
     if (MP.doc.status === 'lobby') { openSheet('mpSheet'); renderLobby(); }
-  } catch (e) { if (fromLink) openMP(code); }
+  } catch (e) { if (fromLink) showHome(true, code); else setHomeStatus(''); }
 }
 
 /* ================= 启动 ================= */
