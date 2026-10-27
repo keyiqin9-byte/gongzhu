@@ -1,0 +1,43 @@
+# 每小时把网页传到公共服务器上的牌谱和"今天打开过"收下来（公共服务器上的保留消息过一天左右会被清掉），
+# 去掉名字、加密后存进 data 分支（只有拿着私钥的人能解开），存好以后再从服务器上删掉。
+# 也可以在 Actions 页面手动点 "Run workflow"。
+name: 收牌谱
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: collect
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: 准备 data 分支
+        run: |
+          git config --global user.name "gongzhu-bot"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch --depth=1 origin data:refs/remotes/origin/data 2>/dev/null; then
+            git worktree add -B data store origin/data
+          else
+            git worktree add --detach store
+            cd store
+            git checkout -q --orphan data
+            git rm -rfq .
+            printf '加密的牌谱，只有拿着私钥的人能解开。\n' > README.md
+          fi
+      - name: 收牌谱
+        run: python3 tools/collect.py fetch --store store --cert tools/rec-cert.pem --out "$RUNNER_TEMP/arch.json"
+      - name: 存进 data 分支
+        run: |
+          cd store
+          git add -A
+          if git diff --cached --quiet; then echo "没有新的"; exit 0; fi
+          git commit -qm "牌谱 $(TZ=Asia/Shanghai date '+%F %H:%M')"
+          git push -q origin data
+      - name: 从服务器上删掉已经存好的
+        run: python3 tools/collect.py clear --list "$RUNNER_TEMP/arch.json"
