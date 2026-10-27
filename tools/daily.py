@@ -2,7 +2,7 @@
 """每日战报：按天数一数有没有人玩、几把、几个人、几个房间、人这队输赢。
 
     python3 tools/daily.py all.json [--me 编号1,编号2] [--me-apps 页面名,...] [--skip 编号,...] [--out stats.json]
-                           [--dash 目录 --fill-from 2026-10-16 --fill-to 2026-10-17]   # 给战报页的 days.json、players.json
+                           [--dash 目录 --fill-from 2026-10-27 --fill-to 2026-10-28]   # 给战报页的 days.json、players.json
 
 all.json 是 `collect.py open` 合成的那份（也认浏览器里 getRecs 拿到的牌谱数组）。
 人只用随机编号区分，报告里写成"你""玩家A""玩家B"……（--me 给的编号，和 --me-apps 列出的页面上打牌的编号，算"你"）。
@@ -136,30 +136,35 @@ def main():
 
 
 def write_dash(a, out):
-    """战报页的两份数据：每天一行（没人玩的日子也有一行，都是 0）、每人每天一行"""
+    """战报页的两份数据：每天一行、每人每天一行。
+
+    有记录的日子都有一行。--fill-from 到 --fill-to 是一直在收记录的日子，这中间没人玩的日子也写一行 0；
+    这段以外没有记录的日子不写（不知道有没有人玩，不能当成 0）。--fill-to 以后的日子还没过完，不写。
+    """
     import datetime
     import os
     os.makedirs(a.dash, exist_ok=True)
     by = {d['day']: d for d in out}
-    iso = lambda d: f'{d[:4]}-{d[4:6]}-{d[6:]}'
-    days = sorted(by)
-    start = (a.fill_from or (iso(days[0]) if days else None))
-    end = (a.fill_to or (iso(days[-1]) if days else None))
-    rows, prows = [], []
-    if start and end:
-        cur = datetime.date.fromisoformat(start)
-        last = datetime.date.fromisoformat(end)
+    keys = set(by)
+    if a.fill_from and a.fill_to:
+        cur = datetime.date.fromisoformat(a.fill_from)
+        last = datetime.date.fromisoformat(a.fill_to)
         while cur <= last:
-            k = cur.strftime('%Y%m%d')
-            d = by.get(k)
-            ht = (d or {}).get('humanTeam', {})
-            rows.append({'day': cur.isoformat(), 'opened': (d or {}).get('opened', 0), 'players': (d or {}).get('players', 0),
-                         'hands': (d or {}).get('hands', 0), 'rooms': (d or {}).get('rooms', 0), 'mp_hands': (d or {}).get('mpHands', 0),
-                         'bot_win': ht.get('win', 0), 'bot_lose': ht.get('lose', 0), 'bot_tie': ht.get('tie', 0),
-                         'pen_won': ht.get('penWon', 0), 'pen_paid': ht.get('penPaid', 0), 'slams': (d or {}).get('slams', 0)})
-            for p in (d or {}).get('per', []):
-                prows.append({'day': cur.isoformat(), 'who': p['who'], 'hands': p['win'] + p['lose'] + p['tie'], 'win': p['win'], 'lose': p['lose'], 'tie': p['tie']})
+            keys.add(cur.strftime('%Y%m%d'))
             cur += datetime.timedelta(days=1)
+    if a.fill_to:
+        keys = {k for k in keys if k <= a.fill_to.replace('-', '')}
+    rows, prows = [], []
+    for k in sorted(keys):
+        day = f'{k[:4]}-{k[4:6]}-{k[6:]}'
+        d = by.get(k)
+        ht = (d or {}).get('humanTeam', {})
+        rows.append({'day': day, 'opened': (d or {}).get('opened', 0), 'players': (d or {}).get('players', 0),
+                     'hands': (d or {}).get('hands', 0), 'rooms': (d or {}).get('rooms', 0), 'mp_hands': (d or {}).get('mpHands', 0),
+                     'bot_win': ht.get('win', 0), 'bot_lose': ht.get('lose', 0), 'bot_tie': ht.get('tie', 0),
+                     'pen_won': ht.get('penWon', 0), 'pen_paid': ht.get('penPaid', 0), 'slams': (d or {}).get('slams', 0)})
+        for p in (d or {}).get('per', []):
+            prows.append({'day': day, 'who': p['who'], 'hands': p['win'] + p['lose'] + p['tie'], 'win': p['win'], 'lose': p['lose'], 'tie': p['tie']})
     json.dump(rows, open(os.path.join(a.dash, 'days.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     json.dump(prows, open(os.path.join(a.dash, 'players.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     print('dash', len(rows), 'days,', len(prows), 'player rows ->', a.dash)
