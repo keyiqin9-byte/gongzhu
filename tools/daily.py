@@ -85,7 +85,7 @@ def main():
         for i in humans:
             u = seats[i].get('u')
             if u:
-                D['players'].add(u)
+                D['players'].add(label.get(u, u))          # 按称呼数：你的两个编号算一个人
         res = r.get('res') or {}
         w, pen = res.get('w'), res.get('pen') or 0
         if res.get('k') in ('small', 'grand'):
@@ -105,11 +105,11 @@ def main():
             u = seats[i].get('u')
             if not u:
                 continue
-            c = D['per'][u]
+            c = D['per'][label.get(u, u)]
             c[2 if w is None else 0 if w == (i & 1) else 1] += 1
     for v in visits:
         if v.get('day') and v.get('uid'):
-            days[v['day']]['opened'].add(v['uid'])
+            days[v['day']]['opened'].add(label.get(v['uid'], v['uid']))
 
     out = []
     for day in sorted(days):
@@ -118,9 +118,9 @@ def main():
             'day': day, 'hands': D['hands'], 'players': len(D['players']), 'opened': len(D['opened'] | D['players']),
             'rooms': len(D['rooms']), 'mpHands': D['mp'], 'apps': dict(D['apps']), 'slams': D['slams'],
             'humanTeam': {'win': D['win'], 'lose': D['lose'], 'tie': D['tie'], 'penPaid': D['penOut'], 'penWon': D['penIn']},
-            'per': [{'who': label.get(u, u), 'win': c[0], 'lose': c[1], 'tie': c[2]} for u, c in sorted(D['per'].items(), key=lambda x: -sum(x[1]))],
+            'per': [{'who': w, 'win': c[0], 'lose': c[1], 'tie': c[2]} for w, c in sorted(D['per'].items(), key=lambda x: -sum(x[1]))],
         })
-    total = {'hands': sum(d['hands'] for d in out), 'days': len([d for d in out if d['hands']]), 'players': len({u for u in order if any(u in days[d]['players'] for d in days)})}
+    total = {'hands': sum(d['hands'] for d in out), 'days': len([d for d in out if d['hands']]), 'players': len({w for D in days.values() for w in D['players']})}
     res = {'days': out, 'total': total, 'labels': {label[u]: u for u in order}}
     if a.out:
         json.dump(res, open(a.out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
