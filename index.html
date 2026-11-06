@@ -878,6 +878,14 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
 .coop-none { margin: 0; font-size: 13px; color: var(--panel-mute); }
 .coop-say { margin: 8px 0 0; font-size: 14px; }
 .home-note { margin: 0; text-align: center; font-size: 12px; color: var(--page-mute); }
+.chat-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 8px; }
+.chat-tabs button { border: 1px solid var(--line); background: transparent; border-radius: 9px; padding: 6px 0; font-size: 13px; cursor: pointer; color: var(--panel-ink); }
+.chat-tabs button[aria-selected="true"] { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); font-weight: 700; }
+.chat-foot { margin-top: 4px; text-align: right; }
+.chat-foot button { border: 0; background: transparent; color: var(--panel-mute); font-size: 13px; text-decoration: underline; cursor: pointer; padding: 4px 2px; }
+.signs { gap: 8px !important; }
+.signs b { color: var(--title); }
+#setTune { flex-wrap: wrap; }
 </style>
 
 <div id="app">
@@ -935,7 +943,7 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
       <button class="home-act" id="homeSolo" type="button"><b>和电脑打</b><span id="homeSoloSub">电脑当队友和对手，想打就打</span></button>
     </div>
     <p class="home-status" id="homeStatus" role="status"></p>
-    <div class="home-foot"><button class="btn ghost" id="homeRules" type="button">规则</button></div>
+    <div class="home-foot"><button class="btn ghost" id="homeRules" type="button">规则</button><button class="btn ghost" id="homeSigns" type="button">队友暗号</button></div>
     <p class="home-note">打完的牌会匿名记下来（不记名字），用来改进电脑的打法。</p>
   </div>
 </div>
@@ -948,6 +956,7 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
       <button class="btn" id="surrBtn" type="button" hidden>这把投降</button>
       <button class="btn" id="mpBtn" type="button">和朋友打</button>
       <button class="btn" id="rulesBtn" type="button">规则</button>
+      <button class="btn" id="signsBtn" type="button">队友暗号</button>
       <button class="btn ghost" id="leaveBtn" type="button" hidden>离开房间</button>
     </div>
     <div class="row" id="surrConfirm" hidden style="margin-top:10px">
@@ -976,6 +985,11 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
         <button type="button" data-v="15">15 秒</button><button type="button" data-v="30">30 秒</button>
       </div>
     </div>
+    <div class="field"><span>背景音乐</span>
+      <div class="seg" id="setTune" role="group" aria-label="背景音乐">
+        <button type="button" data-v="shan">山间</button><button type="button" data-v="zhu">竹楼</button><button type="button" data-v="he">八音盒</button><button type="button" data-v="off">不要音乐</button>
+      </div>
+    </div>
     <p class="mute">时间到了还没出，系统会替你出一张。和朋友开房间时，出牌时间由房主在房间里选。</p>
     <div class="row" style="margin-top:14px"><button class="btn" data-close="menuSheet" type="button">关闭</button></div>
   </div>
@@ -994,12 +1008,10 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
       <li>输了罚几份，看输的那队里分最高的人：3000 以内罚 1 份，3000 起 2 份，6000 起 3 份，9000 起 4 份。队友一起受罚。所以赢的时候要把分堆到对方一个人身上，牌差的时候少输就是赢。</li>
       <li>牌实在太差可以<b>投降</b>（菜单里）：投降的人把剩下没出的分牌全吃下，这把这队输，按吃完后的分算罚几份。和朋友打时，队友在线要他同意。</li>
     </ul>
-    <h3>电脑队友怎么配合你</h3>
+    <h3>队友暗号</h3>
+    <p>队友之间有几条公开的暗号（先出哪门帮回哪门、开 2 这门没了、拿大牌吃就接着回、破满贯垫红桃……），电脑只用这几条，也按这几条读你的牌。<button class="btn ghost" id="rulesSigns" type="button">看队友暗号</button></p>
     <ul>
-      <li>你主动拿一门的大牌（比这门的猪、羊、波还大）吃下一墩，电脑队友轮到出牌时会接着回这门，让你把大牌走掉、把炸弹逼出来。</li>
-      <li>对方有人把出过的红桃全收了（有收满贯的苗头），电脑没这门时会垫一张红桃给你（先垫不带分的 2、3、4），把他的满贯破掉。</li>
-      <li>你在收满贯（红桃都在你手里，你还主动出过红桃），电脑会把红桃垫给你，不垫给对手。</li>
-      <li>每把打完都会记下牌谱，用来对比人和电脑的打法，一轮一轮把电脑练强。</li>
+      <li>每把打完都会记下牌谱（不记名字），用来对比人和电脑的打法，一轮一轮把电脑练强。</li>
     </ul>
     <h3>对战版的规定</h3>
     <ul>
@@ -1008,6 +1020,24 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
       <li>一墩收走后，没分的牌扣在桌上，不能再翻看；分牌摆在各家面前，大家都看得见。</li>
     </ul>
     <div class="row" style="margin-top:12px"><button class="btn" data-close="rulesSheet" type="button">关闭</button></div>
+  </div>
+</div>
+
+<div class="sheet" id="signSheet" hidden>
+  <div class="panel" role="dialog" aria-label="队友暗号">
+    <h2>队友暗号</h2>
+    <p class="mute">这几条暗号是公开的：电脑只用这几条，也按这几条去读你出的牌，电脑和电脑之间没有别的暗号。对手也看得懂，用不用、什么时候用，自己拿主意。</p>
+    <ol class="signs">
+      <li><b>先出哪门，帮回哪门。</b>谁主动先出的第一门（第一墩的黑桃7不算），多半是他的短门。他的队友轮到先出时回这门，帮他早点打空、好往对手身上垫分。</li>
+      <li><b>开 2：这门没了。</b>主动出某门的 2，多半是说这是这门最后一张。队友以后多出这门，让他垫牌。电脑会把 2 留到这门最后一张才出。</li>
+      <li><b>拿大牌吃：炸弹不在我这，接着回这门。</b>主动出比这门炸弹（黑桃Q猪、方块J羊、梅花10波）还大的牌，自己收下这一墩，炸弹又还没出来，意思是"炸弹不在我手里，我在清大牌"。队友接着回这门，把炸弹逼出来。</li>
+      <li><b>队友没有的那门，多出。</b>队友垫过牌（或开过 2）的那门，你先出时多出它，让他往对手身上垫分。对手没有的那门，少出。</li>
+      <li><b>破满贯：垫红桃。</b>对手把出过的红桃都收了，你没这门时垫一张红桃给别人，对手快要收齐了就更要垫；先垫不带分的 2、3、4。</li>
+      <li><b>帮满贯：红桃给队友。</b>队友在收满贯（出过的红桃都在他那里，他还主动出过红桃），把红桃垫给他，别垫给对手。</li>
+      <li><b>0 分挡波。</b>你 0 分、队友有分，波出来时压过队友把它收了；最好这一墩除了波没有别的分。</li>
+    </ol>
+    <p class="mute">电脑说真话：手里还有这门时，它不先出 2；手里有猪（羊、波）时，它不拿比猪大的牌先出去吃。电脑当你队友时会冒气泡说它在干什么（"回你♠""破满贯！"），一把打完还会列出这把的配合。</p>
+    <div class="row" style="margin-top:12px"><button class="btn" data-close="signSheet" type="button">关闭</button></div>
   </div>
 </div>
 
@@ -1041,7 +1071,7 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
 
 <div class="toast" id="toast" hidden></div>
 <div class="talk-layer" id="talkLayer" aria-live="polite"></div>
-<div class="chat-pop" id="chatPop" hidden role="dialog" aria-label="快捷语和表情"><div class="chat-grid" id="chatGrid"></div><div class="emo-row" id="emoRow"></div></div>
+<div class="chat-pop" id="chatPop" hidden role="dialog" aria-label="快捷语和表情"><div class="chat-tabs" id="chatTabs" role="tablist" aria-label="快捷语分类"></div><div class="chat-grid" id="chatGrid"></div><div class="emo-row" id="emoRow"></div><div class="chat-foot"><button type="button" data-signs>看队友暗号</button></div></div>
 
 <script>
 (() => {
@@ -1224,7 +1254,8 @@ const LEVELS = {
     cashRet: true, selfCash: false, cashFollow: true, slamIns: 3, slamSup: true },
   hard: { mem: 'full', voids: true, flush: true, guard: true, danger: true, short: true, slamdef: true, eatbo: true, noise: 0,
     ret: true, sig2: true, avoidOpp: true, cash: false, voidAll: true, boOrder: true, boShield: true, split: false, pimc: 24, budget: 350, shortBias: 0.7, penW: 0.35,
-    cashRet: true, selfCash: false, cashFollow: true, slamIns: 3, slamSup: true, convM: 0.5, convMcash: 0.8, convAll: false, cashBias: 0.35, cashHigh: 1.8 },
+    cashRet: true, selfCash: false, cashFollow: true, slamIns: 3, slamSup: true, convM: 0.5, convMcash: 0.8, convAll: false, cashBias: 0.35, cashHigh: 1.8,
+    honest: 'human', honM: 0.5 },
 };
 LEVELS.roll = Object.assign({}, LEVELS.hard, { pimc: 0, budget: 0 });          // 推演时大家按这套打
 function pyRound(v) { const f = Math.floor(v), d = v - f; if (d > 0.5) return f + 1; if (d < 0.5) return f; return f % 2 === 0 ? f : f + 1; }
@@ -1352,7 +1383,7 @@ function leadOptions(x) {
     if (cfg.sig2 && rank(low) === 0 && cs.length >= 2 && rank(cs[1]) <= 5 && cs[1] !== b) low = cs[1];
     const voidOpp = cfg.voids ? others.find(q => opp(x, q) && likelyVoid(x, q, s)) : undefined;
     const ovoid = voidOpp !== undefined;
-    const pvoid = cfg.voids && likelyVoid(x, par, s);
+    const pvoid = cfg.voids && cfg.feed !== false && likelyVoid(x, par, s);
     const pw = pWinLead(x, low, others);
     let v = Math.random() * 0.1, why = '';
     const cons = [];
@@ -1701,6 +1732,26 @@ function pimcChoose(st, me, cfg) {
   if (!sum.has(rep)) rep = cands.filter(c => c < base.c && suit(c) === suit(base.c)).pop();
   let best = rep !== undefined && sum.has(rep) ? rep : cands[0];
   for (const c of cands) if (sum.get(c) > sum.get(best) + 1e-9) best = c;
+  // 公开暗号要说真话（队友是真人时；honest: 'all' 时对电脑队友也一样）：不开"假 2"（这门还有牌却先出 2），
+  // 手里有这门炸弹时不拿比炸弹大的牌去先出（那是"炸弹不在我这"的暗号）。只有不说真话明显更好（平均多赚 honM 份以上）才例外
+  const parKind = st.seats && st.seats[x.par] && st.seats[x.par].kind;
+  if (cfg.honest && !st.trick.length && (cfg.honest === 'all' || parKind === 'human')) {
+    const lie = c => { const s = suit(c), b = BOMB_OF[s]; return (rank(c) === 0 && x.hand.size > 1 && [...x.hand].some(d => d !== c && suit(d) === s)) || (b !== null && c > b && x.hand.has(b)); };
+    if (lie(best)) {
+      // 先找和它一样好的牌（同一组等价牌里大一点的那张，比如 2 和 3 中间没有外面的牌）
+      const s = suit(best), same = legal.filter(c => suit(c) === s && c > best && PTS[c] === PTS[best] && !BOMBS.includes(c)).sort((a, b) => a - b);
+      let eq;
+      for (const c of same) { let gap = false; for (let k = best + 1; k < c; k++) if (x.U.has(k)) { gap = true; break; } if (gap) break; if (!lie(c)) { eq = c; break; } }
+      if (eq !== undefined) best = eq;
+      else {
+        let bh;
+        for (const c of cands) if (!lie(c) && (bh === undefined || sum.get(c) > sum.get(bh))) bh = c;
+        if (bh !== undefined && (sum.get(best) - sum.get(bh)) / n < (cfg.honM || 0.5)) best = bh;
+      }
+      if (best === base.c) return base;
+      if (!sum.has(best)) return { c: best, why: '和刚才算的那张一样好，出这张不会让队友误会（2 留着当"这门没了"的暗号）' };
+    }
+  }
   if (best === rep) return base;
   // 回牌、破满贯这些是约定（人看得懂）：先在约定里挑推演最好的那张；约定外的只有明显更好（平均多赚 convM 份）才改
   const human = (base.who || []).some(q => st.seats && st.seats[q] && st.seats[q].kind === 'human');
@@ -1734,7 +1785,7 @@ function moveNote(st, p, c) {
     if (oppVoid) return null;
     if (s !== H && x.cash[par].has(s)) return { k: 'ret', p, to: par, s, cash: 1 };
     if (s !== H && x.first[par] === s && x.first[p] !== s) return { k: 'ret', p, to: par, s };
-    if (likelyVoid(x, par, s)) return { k: 'feed', p, to: par, s };
+    if (likelyVoid(x, par, s)) return { k: 'feed', p, to: par, s, sure: isVoid(x, par, s) ? 1 : 0 };   // sure：队友真垫过这门；只开过 2 的不算准
     return null;
   }
   const led = suit(st.trick[0][1]);
@@ -1750,21 +1801,186 @@ function moveNote(st, p, c) {
   if (wp === par && c > wc && st.pts[p] === 0 && st.trick.some(t => t[1] === BO)) return { k: 'shield', p, to: par };
   return null;
 }
-// 整把重放一遍，挑出所有配合的手（结算页的"这把的配合"）
+// 一墩收完再核对要看结果的用意：猪羊波真到了那个对手手里、满贯真破了、红桃真给了收满贯的队友、波真是他收的。
+// t 是收完的这一墩 {cards, w}，after 是收完以后的局面
+const heartHolders = h => h.filter(v => v > 0).length;
+function heartsBefore(t, after) {
+  const h = after.hearts.slice();
+  h[t.w] -= t.cards.filter(m => suit(m[1]) === H).length;
+  return h;
+}
+function noteHolds(n, t, after) {
+  const cs = t.cards.map(m => m[1]);
+  switch (n.k) {
+    case 'bomb': return t.w === n.to && cs.includes(n.c);
+    case 'shield': return t.w === n.p && cs.includes(BO);
+    case 'brk': { const hb = heartsBefore(t, after); return heartHolders(hb) === 1 && hb[n.vs] > 0 && heartHolders(after.hearts) >= 2; }
+    case 'sup': return t.w === n.to && heartHolders(after.hearts) === 1 && after.hearts[n.to] > 0;
+    case 'feed': return !n.sure || t.cards.some(([q, c]) => q === n.to && suit(c) !== n.s);
+    default: return true;
+  }
+}
+// 整把重放一遍，挑出所有配合的手（结算页的"这把的配合"）；看结果的那几种，一墩收完核对过才算
 function handNotes(st) {
   if (!st || !st.deal || st.deal.length !== 4) return [];
   const w = { phase: 'play', turn: st.leader0, first7: !!st.first7, trick: [], tricks: [], hands: st.deal.map(h => h.slice()),
     pts: [0, 0, 0, 0], hasbo: [false, false, false, false], hearts: [0, 0, 0, 0], got: [[], [], [], []], taken: 0 };
   const out = [];
   for (const t of st.tricks) {
+    const pend = [];
     for (const [p, c] of t.cards) {
       if (w.phase !== 'play' || w.turn !== p || !w.hands[p].includes(c)) return out;   // 对不上就不往下看了
       const n = moveNote(w, p, c);
-      if (n) { n.t = w.tricks.length; out.push(n); }
+      if (n) { n.t = w.tricks.length; pend.push(n); }
       playFast(w, p, c);
+    }
+    const done = w.tricks[w.tricks.length - 1];
+    for (const n of pend) {
+      if (!noteHolds(n, done, w)) continue;
+      if (n.k === 'shield') n.zero = w.pts[n.p] === 0 ? 1 : 0;
+      out.push(n);
     }
   }
   return out;
+}
+
+/* ---------- 喊话：电脑冒气泡说的话，说出来的都要和桌上对得上 ---------- */
+// 出牌时就能说的只有"回牌""喂断门"（只说用意）；送猪羊波、破满贯、帮满贯、挡波、收到炸弹，都等这一墩收完、核对过结果再说
+const SAY = {
+  ret: ['回你{S}', '{S}还给你', '回你{S}，看你的'],
+  retCash: ['回你{S}', '{S}接着回你', '{S}还你，大的走起'],
+  feedSure: ['{S}你没了，垫吧', '出{S}，你垫牌'],
+  feedAsk: ['{S}你是不是没了？', '出{S}，你没有就垫'],
+  brk: ['破满贯！', '红桃不让他收齐', '破了破了'],
+  sup: ['红桃给你，收满贯！', '红桃都给你'],
+  shieldZero: ['波我来收，0分不怕', '我0分，波我收了'],
+  shieldPts: ['波我来扛，替你挡了', '替你挡了波😅'],
+  giftPig: ['猪送你🐷', '接好了，猪🐷', '这头猪给你🐷'],
+  giftSheep: ['羊送你🐑', '羊给你🐑'],
+  giftBo: ['波给你，×8！', '波送你'],
+  gotPig: ['唉，吃猪了😭', '猪到我这了…', '我的猪啊😭'],
+  gotPig8: ['吃猪了，还要×8😭', '猪也×8了😭'],
+  gotSheep: ['收了只羊🐑', '羊归我了'],
+  gotSheep8: ['羊也×8了😭', '收了只羊，还×8😭'],
+  gotBoZero: ['0分吃波，不怕😎', '波来了，0分不怕'],
+  gotBoPts: ['吃到波了😱 分要×8', '波…分×8了😱'],
+  gotBoWith: ['分和波一起吃了😭', '连分带波😱 ×8'],
+  gotPigBo: ['猪和波一起吃了😭', '猪加波…完了😭'],
+  niceGift: ['漂亮！{B}送出去了', '好！{B}给他了👍'],
+  niceBrk: ['破得好！', '满贯破了，漂亮👍'],
+  niceShield: ['挡得好！', '你0分收波，稳👍'],
+  teasePig: ['嘿嘿，猪归你了🐷', '猪找到主人了🐷'],
+};
+const sayPick = (arr, k, s, b) => { let t = arr[Math.abs(Math.floor(k)) % arr.length]; if (s !== undefined) t = t.split('{S}').join(SUITS[s]); if (b !== undefined) t = t.split('{B}').join(BNAME[b]); return t; };
+function noteSayNow(n, k) {
+  if (n.k === 'ret') return sayPick(n.cash ? SAY.retCash : SAY.ret, k, n.s);
+  if (n.k === 'feed') return sayPick(n.sure ? SAY.feedSure : SAY.feedAsk, k, n.s);
+  return '';
+}
+function noteSayDone(n, t, after, k) {
+  if (n.k === 'bomb') return sayPick(n.c === PIG ? SAY.giftPig : n.c === SHEEP ? SAY.giftSheep : SAY.giftBo, k);
+  if (n.k === 'brk') return sayPick(SAY.brk, k);
+  if (n.k === 'sup') return sayPick(SAY.sup, k);
+  if (n.k === 'shield') return sayPick(after.pts[n.p] === 0 ? SAY.shieldZero : SAY.shieldPts, k);
+  return '';
+}
+// 收到炸弹的电脑说一句，按收完以后的分说
+function gotSay(w, t, after, k) {
+  const cs = t.cards.map(m => m[1]);
+  const pig = cs.includes(PIG), sheep = cs.includes(SHEEP), bo = cs.includes(BO);
+  if (bo) {
+    if (after.pts[w] === 0) return sayPick(SAY.gotBoZero, k);
+    if (pig) return sayPick(SAY.gotPigBo, k);
+    return sayPick(cs.some(c => PTS[c] > 0) ? SAY.gotBoWith : SAY.gotBoPts, k);
+  }
+  if (pig) return sayPick(after.hasbo[w] ? SAY.gotPig8 : SAY.gotPig, k);
+  if (sheep) return sayPick(after.hasbo[w] ? SAY.gotSheep8 : SAY.gotSheep, k);
+  return '';
+}
+// 真人这一墩打得好：电脑队友夸一句；真人吃了猪，对面的电脑逗一句
+function reactSay(t, after, seats, k) {
+  const kind = q => (seats[q] && seats[q].kind) || '';
+  const cs = t.cards.map(m => m[1]);
+  for (const [q, c] of t.cards) {
+    if (kind(q) !== 'human' || kind(q ^ 2) !== 'bot') continue;
+    if (BOMBS.includes(c) && ((t.w ^ q) & 1) === 1) return { seat: q ^ 2, text: sayPick(SAY.niceGift, k, undefined, c), why: 'gift', by: q, c };
+  }
+  const hb = heartsBefore(t, after);
+  if (heartHolders(hb) === 1 && heartHolders(after.hearts) >= 2) {
+    const s0 = hb.findIndex(v => v > 0);
+    for (const [q, c] of t.cards) {
+      if (suit(c) !== H || kind(q) !== 'human' || kind(q ^ 2) !== 'bot' || ((q ^ s0) & 1) === 0 || t.w === s0) continue;
+      return { seat: q ^ 2, text: sayPick(SAY.niceBrk, k), why: 'brk', by: q, vs: s0 };
+    }
+  }
+  if (kind(t.w) === 'human' && cs.includes(BO) && after.pts[t.w] === 0 && kind(t.w ^ 2) === 'bot') return { seat: t.w ^ 2, text: sayPick(SAY.niceShield, k), why: 'shield', by: t.w };
+  if (kind(t.w) === 'human' && cs.includes(PIG) && k % 3 !== 0) {
+    const foes = [(t.w + 1) % 4, (t.w + 3) % 4].filter(q => kind(q) === 'bot');
+    if (foes.length) return { seat: foes[k % foes.length], text: sayPick(SAY.teasePig, k), why: 'tease', to: t.w };
+  }
+  return null;
+}
+const movesOf = st => { const a = []; for (const t of st.tricks) for (const m of t.cards) a.push(m); for (const m of st.trick) a.push(m); return a; };
+// prev → next 之间新出的牌，电脑要说的话：[{seat, text, delay, k, n?}]。mem 记着这一墩里还没收完、等核对的用意
+function speechEvents(prev, next, mem) {
+  const out = [];
+  if (!mem) mem = {};
+  if (!prev || !next || prev.hand !== next.hand || mem.hand !== next.hand) { mem.hand = next ? next.hand : null; mem.pend = []; }
+  if (!prev || !next || prev.hand !== next.hand) return out;
+  const a = movesOf(prev), b = movesOf(next);
+  if (b.length <= a.length || b.length - a.length > 8) { mem.pend = []; return out; }
+  const isBot = q => !!(next.seats[q] && next.seats[q].kind === 'bot');
+  let st = prev;
+  for (let i = a.length; i < b.length; i++) {
+    const [p, c] = b[i];
+    if (st.phase !== 'play' || st.turn !== p) break;
+    const k = next.hand * 31 + i * 7 + p;
+    let n = null;
+    if (isBot(p)) { try { n = moveNote(st, p, c); } catch (e) { n = null; } }
+    let after;
+    try { after = applyMove(st, p, c, ''); } catch (e) { break; }
+    if (n) {
+      n.t = st.tricks.length;
+      const txt = noteSayNow(n, k);
+      if (txt) out.push({ seat: p, text: txt, delay: 160, k: n.k, n, before: st });
+      else mem.pend.push(n);
+    }
+    if (after.tricks.length > st.tricks.length) {                    // 这一墩收完了：核对、说结果
+      const ti = after.tricks.length - 1, t = after.tricks[ti], said = new Set();
+      for (const m of mem.pend) {
+        if (m.t !== ti || said.has(m.p) || !noteHolds(m, t, after)) continue;
+        const txt = noteSayDone(m, t, after, k + m.p);
+        if (txt) { out.push({ seat: m.p, text: txt, delay: 650, k: m.k, n: m, t, after }); said.add(m.p); }
+      }
+      mem.pend = [];
+      if (isBot(t.w) && !said.has(t.w)) {
+        const txt = gotSay(t.w, t, after, k + 3);
+        if (txt) { out.push({ seat: t.w, text: txt, delay: 900, k: 'got', w: t.w, t, after }); said.add(t.w); }
+      }
+      if (!said.size) {
+        const r = reactSay(t, after, next.seats, k);
+        if (r && !said.has(r.seat)) out.push({ seat: r.seat, text: r.text, delay: 900, k: 'react', r, t, after });
+      }
+    }
+    st = after;
+  }
+  return out;
+}
+// 一把打完，电脑队友说一句（按这把的结果说，不乱认错、不乱夸）
+function endSay(st, my, k) {
+  const r = st && st.result, par = my ^ 2;
+  if (!r || !st.seats[par] || st.seats[par].kind !== 'bot') return '';
+  const team = my & 1, sc = r.scores || [];
+  const pick = a => a[Math.abs(Math.floor(k)) % a.length];
+  if (r.kind === 'surrender') return (r.surrBy & 1) === team ? pick(['投降也好，少输一点', '这把认了，下把再来']) : pick(['他们投降了😎', '对面认输了👍']);
+  if (r.winTeam === null) return pick(['平了，下把分个高下', '打平也不错']);
+  if (r.kind === 'small' || r.kind === 'grand') {
+    if (r.winTeam !== team) return pick(['让他们收了满贯😭 下把盯紧红桃', '满贯没破掉，下把盯紧红桃']);
+    return r.slammer === par ? pick(['满贯是我收的😎', '收齐红桃了😎']) : pick(['满贯！板扎🎉', '收满贯了，漂亮🎉']);
+  }
+  if (r.winTeam === team) return sc[par] === 0 ? pick(['我一分没吃😎', '这把我0分👍']) : pick(['配合得好👍', '这把赢得漂亮！']);
+  if (r.loser === par) return pick(['我的锅🙈 下把看我的', '分都在我这了🙈 下把注意']);
+  return pick(['没事，下把赢回来💪', '牌太差了，下把再来']);
 }
 /* ================= 页面状态 ================= */
 const $ = s => document.querySelector(s);
@@ -2104,7 +2320,7 @@ setInterval(tickClock, 250);
 // 每打完一把记一份牌谱：发的牌、每一手谁出的什么（h 人出的、b 电脑、a 超时系统代出）、结果。
 // 存在这台手机里（最多 400 把）；网站版顺手传到联机服务器，在 Claude 里打开时存到页面数据库。
 // 以后拿来对比人和电脑的打法：哪里打得好就学过来，哪里失误就标出来，一轮一轮把电脑练强。
-const REC_KEY = 'gz-recs', REC_MAX = 400, BUILD = 'v7';
+const REC_KEY = 'gz-recs', REC_MAX = 400, BUILD = 'v8';
 const REC_APP = 'duel';
 const RNET = window.__gzNet || null;
 let recDid = null, recBusy = false;
@@ -2239,58 +2455,19 @@ function clearBubbles() {
   FUN.timers.forEach(clearTimeout); FUN.timers.clear();
 }
 
-/* ---------- 电脑喊话：看它这手在配合上是什么意思 ---------- */
-function talkText(V, n, k) {
-  const S = n.s !== undefined ? SUITS[n.s] : '';
-  switch (n.k) {
-    case 'ret': return pickOf(n.cash ? [`回你${S}`, `${S}接着回你`, `${S}还你，大的走起`] : [`回你${S}`, `${S}还给你`, `回你${S}，看你的`], k);
-    case 'feed': return pickOf([`${S}你没了，垫吧`, `出${S}，你垫牌`], k);
-    case 'brk': return pickOf(['破满贯！', '红桃不让他收齐', '破了破了'], k);
-    case 'sup': return pickOf(['红桃给你，收满贯！', '红桃都给你'], k);
-    case 'shield': return pickOf(['波我来收！', '我0分，波给我'], k);
-    case 'bomb':
-      if (n.c === PIG) return pickOf(['猪送你🐷', '接好了，猪🐷', '这头猪给你🐷'], k);
-      if (n.c === SHEEP) return pickOf(['羊送你🐑', '羊给你🐑'], k);
-      return pickOf(['波给你，×8！', '波送你'], k);
-    default: return '';
-  }
-}
-function gotText(c, k, zero) {
-  if (c === PIG) return pickOf(['唉，吃猪了😭', '猪到我这了…', '我的猪啊😭'], k);
-  if (c === BO) return zero ? pickOf(['0分吃波，不怕', '波来了，0分不怕😎'], k) : pickOf(['吃到波了😱', '波…要×8了😱'], k);
-  return pickOf(['收了只羊🐑', '羊归我了'], k);
-}
-const movesOf = st => { const a = []; for (const t of st.tricks) for (const m of t.cards) a.push(m); for (const m of st.trick) a.push(m); return a; };
+/* ---------- 电脑喊话：说什么由"电脑"那一段的 speechEvents 定（一墩收完核对过结果才说），这里只管冒气泡和音效 ---------- */
 function funOnState(prev, next) {
   try {
-    if (!prev || !next || prev.hand !== next.hand || next.v <= prev.v) { if (!prev || !next || prev.hand !== next.hand) clearBubbles(); return; }
-    const V = view();
+    if (!prev || !next || prev.hand !== next.hand) { clearBubbles(); FUN.mem = {}; return; }
+    if (next.v <= prev.v) return;
     const a = movesOf(prev), b = movesOf(next);
-    if (b.length <= a.length || b.length - a.length > 8) return;
-    let st = prev, said = -1;
-    for (let i = a.length; i < b.length; i++) {
-      const [p, c] = b[i];
-      if (st.phase !== 'play' || st.turn !== p) break;
-      const bot = next.seats[p] && next.seats[p].kind === 'bot';
-      const n = bot ? moveNote(st, p, c) : null;
-      if (n) { const txt = talkText(V, n, next.v + p * 7); setTimeout(() => bubble(p, txt), 160); said = p; }
-      sfx('card');
-      let after;
-      try { after = applyMove(st, p, c, ''); } catch (e) { break; }
-      if (after.tricks.length > st.tricks.length) {                  // 一墩收完：谁吃到猪羊波
-        const t = after.tricks[after.tricks.length - 1];
-        const got = t.cards.map(m => m[1]).filter(x => BOMBS.includes(x));
-        if (got.includes(PIG)) sfx('pig'); else if (got.includes(BO)) sfx('bo'); else if (got.includes(SHEEP)) sfx('sheep');
-        const wbot = next.seats[t.w] && next.seats[t.w].kind === 'bot';
-        if (wbot && got.length && said !== t.w) {
-          const c0 = got.includes(PIG) ? PIG : got.includes(BO) ? BO : SHEEP;
-          const zero = c0 === BO && st.pts[t.w] === 0;
-          const txt = gotText(c0, next.v + t.w, zero);
-          setTimeout(() => bubble(t.w, txt), 900);
-        }
-      }
-      st = after;
+    if (b.length <= a.length || b.length - a.length > 8) { FUN.mem = {}; return; }
+    for (let i = a.length; i < b.length; i++) sfx('card');
+    for (let ti = prev.tricks.length; ti < next.tricks.length; ti++) {   // 一墩收完：谁吃到猪羊波
+      const got = next.tricks[ti].cards.map(m => m[1]).filter(x => BOMBS.includes(x));
+      if (got.includes(PIG)) sfx('pig'); else if (got.includes(BO)) sfx('bo'); else if (got.includes(SHEEP)) sfx('sheep');
     }
+    for (const e of speechEvents(prev, next, FUN.mem || (FUN.mem = {}))) setTimeout(() => bubble(e.seat, e.text), e.delay);
   } catch (e) { /* 喊话出了问题不影响打牌 */ }
 }
 
@@ -2313,7 +2490,7 @@ function coopHTML(V, st) {
       case 'feed': return `${A}出${SX(g.s)}让${B}垫牌${times}`;
       case 'brk': return `${A}垫红桃破了${esc(who(g.vs))}的满贯`;
       case 'sup': return `${A}把红桃给${B}收满贯${times}`;
-      case 'shield': return `${A}0 分收了波，替${B}挡了`;
+      case 'shield': return g.zero ? `${A}0 分收了波，替${B}挡了` : `${A}收了波，替${B}挡了`;
       case 'bomb': return `${A}把${BNAME[g.c]}送给了${B}`;
       default: return '';
     }
@@ -2321,34 +2498,66 @@ function coopHTML(V, st) {
   const list = [...groups.values()].sort((x, y) => (((x.p & 1) === myTeam ? 0 : 1) - ((y.p & 1) === myTeam ? 0 : 1)) || (x.t - y.t)).slice(0, 7);
   const items = list.map(g => `<li class="${(g.p & 1) === myTeam ? 'us' : 'them'}">${line(g)}</li>`).join('');
   let say = '';
-  const par = V.my ^ 2, r = st.result;
-  if (!V.spect && r && st.seats[par] && st.seats[par].kind === 'bot') {
-    const k = st.hand + st.v;
-    const t = r.winTeam === null ? pickOf(['平了，下把分个高下', '打平也不错'], k)
-      : r.winTeam === myTeam ? pickOf(['配合得好👍', '这把赢得漂亮！', '跟着我，稳的😎'], k)
-        : pickOf(['没事，下把赢回来💪', '牌太差了，下把再来', '我的锅🙈 下把看我的'], k);
-    say = `<p class="coop-say"><b>${esc(who(par))}</b>：${esc(t)}</p>`;
+  const par = V.my ^ 2;
+  if (!V.spect) {
+    const t = endSay(st, V.my, st.hand + st.v);
+    if (t) say = `<p class="coop-say"><b>${esc(who(par))}</b>：${esc(t)}</p>`;
   }
   return `<div class="coop"><div class="coop-h">这把的配合</div>${items ? `<ul>${items}</ul>` : '<p class="coop-none">这把没有回牌、破满贯、挡波这些配合。</p>'}${say}</div>`;
 }
 
 /* ---------- 快捷语和表情 ---------- */
-const CHAT = ['快点嘛～', '队友给力！', '我的锅🙈', '稳住，能赢', '猪别给我！', '这把悬了…', '好牌！', '哈哈哈哈'];
-const EMO = ['👍', '😂', '🐷', '😭', '😡', '🙏', '💪', '🤔'];
-const CHAT_ALL = CHAT.concat(EMO);
-// 单机时电脑接话：[谁接（1 下家 2 对家 3 上家）, 说什么]
-const REPLY = [
-  [[1, ['来了来了', '别催别催', '想一下嘛🤔']], [3, ['来了来了', '急啥😏']]],
-  [[2, ['那必须的💪', '跟着我走😎', '👍']]],
-  [[2, ['没事，下把赢回来', '小意思', '🙏没事没事']]],
-  [[2, ['稳的👍', '包在我身上']], [1, ['别高兴太早😏']]],
-  [[1, ['那可说不准🐷', '嘿嘿🐷']], [3, ['猪自己会找人的😏']]],
-  [[2, ['还有机会！', '顶住💪']], [3, ['悬了吧😏']]],
-  [[1, ['运气好而已😏']], [2, ['👍']]],
-  [[1, ['😂']], [3, ['笑什么😏']], [2, ['哈哈😂']]],
-  [[2, ['👍']]], [[1, ['😂']], [2, ['😂']]], [[1, ['🐷🐷']], [3, ['🐷？']]], [[2, ['抱抱🙏']], [3, ['😏']]],
-  [[1, ['别生气嘛😂']], [3, ['消消气😂']]], [[2, ['收到🙏']]], [[2, ['💪💪']]], [[1, ['想啥呢😏']], [2, ['🤔']]],
+// 分四类，每句有固定的 key：联机时发 key。第九版里有的那几句（和 8 个表情）同时带上旧序号 i，老版本的朋友也看得到
+const CHAT_TABS = [
+  ['常用', [['fast', '快点嘛～'], ['wait', '别催别催'], ['good', '好牌！'], ['haha', '哈哈哈哈'], ['mybad', '我的锅🙈'], ['steady', '稳住，能赢'], ['risky', '这把悬了…'], ['again', '再来一把！']]],
+  ['配合', [['trust', '相信我'], ['yours', '交给你了'], ['hold', '我来扛'], ['nice', '队友给力！'], ['nopig', '猪别给我！'], ['watchh', '红桃盯紧，别让他收满贯'], ['coop', '配合得好👍'], ['sorry', '刚才没配合好🙏']]],
+  ['逗趣', [['luck', '手气太差了😭'], ['lucky', '运气好而已😏'], ['watch', '看我的😎'], ['onpurpose', '你是故意的吧😂'], ['pigfound', '猪找到主人了🐷'], ['slow', '慢慢想，不急'], ['serve', '服了服了🙏'], ['sheep', '羊在哪呢🐑']]],
+  ['芒市话', [['banza', '板扎！'], ['haozai', '好在！'], ['zagez', '咋个整？'], ['moh', '莫慌莫慌'], ['laohuo', '老火了😭'], ['zhengna', '整哪样嘛😂'], ['shiga', '是嘎？😳'], ['yaode', '要得！']]],
 ];
+const EMO = ['👍', '😂', '🐷', '😭', '😡', '🙏', '💪', '🤔', '😎', '🎉', '🐑', '😱', '🤣', '👀', '😴', '🙈'];
+const CHAT_TXT = new Map();
+CHAT_TABS.forEach(([, list]) => list.forEach(([k, t]) => CHAT_TXT.set(k, t)));
+EMO.forEach(e => CHAT_TXT.set('e:' + e, e));
+const CHAT_V9 = ['fast', 'nice', 'mybad', 'steady', 'nopig', 'risky', 'good', 'haha'].concat(EMO.slice(0, 8).map(e => 'e:' + e));   // 第九版的序号
+// 单机时电脑接话：[谁接（1 下家 2 对家 3 上家）, 说什么]
+const REPLY = {
+  fast: [[1, ['来了来了', '别催别催', '想一下嘛🤔']], [3, ['来了来了', '急啥😏']]],
+  wait: [[1, ['好好好，不催😂']], [2, ['慢慢来👍']]],
+  good: [[1, ['运气好而已😏']], [2, ['👍']]],
+  haha: [[1, ['😂']], [3, ['笑什么😏']], [2, ['哈哈😂']]],
+  mybad: [[2, ['没事，下把赢回来', '小意思', '🙏没事没事']]],
+  steady: [[2, ['稳的👍', '包在我身上']], [1, ['别高兴太早😏']]],
+  risky: [[2, ['还有机会！', '顶住💪']], [3, ['悬了吧😏']]],
+  again: [[2, ['来！💪']], [1, ['再来再来😎']]],
+  trust: [[2, ['信你👍', '跟着你走']]],
+  yours: [[2, ['交给我😎', '我尽量💪']]],
+  hold: [[2, ['靠你了💪', '辛苦了🙏']]],
+  nice: [[2, ['那必须的💪', '跟着我走😎', '👍']]],
+  nopig: [[1, ['那可说不准🐷', '嘿嘿🐷']], [3, ['猪自己会找人的😏']]],
+  watchh: [[2, ['盯着呢👀', '收到👍']], [1, ['破得了吗😏']]],
+  coop: [[2, ['👍', '默契😎']]],
+  sorry: [[2, ['没事🙏', '下把注意就行']]],
+  luck: [[2, ['下把就好了💪']], [3, ['嘿嘿😏']]],
+  lucky: [[1, ['低调低调😎']], [3, ['哼😏']]],
+  watch: [[2, ['看你的😎']], [1, ['等着看😏']]],
+  onpurpose: [[1, ['冤枉啊😂']], [3, ['就是故意的😏']]],
+  pigfound: [[1, ['🐷🐷']], [3, ['反正不是我😂']]],
+  slow: [[1, ['谢谢🙏']], [2, ['不急👍']]],
+  serve: [[2, ['哈哈😂']], [1, ['承让承让😎']]],
+  sheep: [[1, ['反正不在我这😏']], [3, ['🐑？']]],
+  banza: [[2, ['板扎得很👍', '那是😎']], [1, ['还可以嘛😏']]],
+  haozai: [[2, ['好在得很😎']], [3, ['好在嘞😂']]],
+  zagez: [[2, ['莫慌，稳得住', '看我的😎']]],
+  moh: [[2, ['不慌👍']], [1, ['慌也没用😏']]],
+  laohuo: [[2, ['莫慌莫慌', '还有机会💪']], [3, ['嘿嘿😏']]],
+  zhengna: [[1, ['没整哪样😂']], [3, ['嘿嘿😏']]],
+  shiga: [[2, ['就是嘛😎']], [1, ['你猜😏']]],
+  yaode: [[2, ['👍']]],
+  'e:👍': [[2, ['👍']]], 'e:😂': [[1, ['😂']], [2, ['😂']]], 'e:🐷': [[1, ['🐷🐷']], [3, ['🐷？']]], 'e:😭': [[2, ['抱抱🙏']], [3, ['😏']]],
+  'e:😡': [[1, ['别生气嘛😂']], [3, ['消消气😂']]], 'e:🙏': [[2, ['收到🙏']]], 'e:💪': [[2, ['💪💪']]], 'e:🤔': [[1, ['想啥呢😏']], [2, ['🤔']]],
+  'e:😎': [[2, ['😎']], [1, ['得意啥😏']]], 'e:🎉': [[2, ['🎉🎉']]], 'e:🐑': [[1, ['🐑？']], [3, ['羊不在我这😏']]], 'e:😱': [[2, ['莫慌😂']]],
+  'e:🤣': [[1, ['🤣']], [2, ['🤣']]], 'e:👀': [[3, ['看啥😏']]], 'e:😴': [[2, ['醒醒😂']], [1, ['到你了😴？']]], 'e:🙈': [[2, ['😂']]],
+};
 function chatOpen(on) {
   const pop = $('#chatPop');
   if (!pop) return;
@@ -2356,72 +2565,254 @@ function chatOpen(on) {
   if (on) {
     const V = view();
     if (!V.st || V.spect) return;
-    if (!$('#chatGrid').childElementCount) {
-      $('#chatGrid').innerHTML = CHAT.map((t, i) => `<button type="button" data-chat="${i}">${esc(t)}</button>`).join('');
-      $('#emoRow').innerHTML = EMO.map((t, i) => `<button type="button" data-chat="${CHAT.length + i}" aria-label="${t}">${t}</button>`).join('');
+    if (!$('#chatTabs').childElementCount) {
+      $('#chatTabs').innerHTML = CHAT_TABS.map(([name], i) => `<button type="button" role="tab" data-tab="${i}">${esc(name)}</button>`).join('');
+      $('#emoRow').innerHTML = EMO.map(t => `<button type="button" data-chat="e:${t}" aria-label="${t}">${t}</button>`).join('');
     }
+    chatTab(loadJSON('gz-chattab', 0));
   }
   pop.hidden = !on;
 }
-function chatSend(i) {
+function chatTab(i) {
+  i = Math.max(0, Math.min(CHAT_TABS.length - 1, Number(i) || 0));
+  saveJSON('gz-chattab', i);
+  document.querySelectorAll('#chatTabs [data-tab]').forEach(b => b.setAttribute('aria-selected', String(Number(b.dataset.tab) === i)));
+  $('#chatGrid').innerHTML = CHAT_TABS[i][1].map(([k, t]) => `<button type="button" data-chat="${k}">${esc(t)}</button>`).join('');
+}
+function chatSend(k) {
   const V = view();
   chatOpen(false);
-  if (!V.st || V.spect || !(i >= 0 && i < CHAT_ALL.length)) return;
+  if (!V.st || V.spect || !CHAT_TXT.has(k)) return;
   if (Date.now() - FUN.chatAt < 1200) { toast('说慢一点'); return; }
   FUN.chatAt = Date.now();
-  bubble(V.my, CHAT_ALL[i], 'me');
-  if (V.mp) { if (MP.nroom) MP.nroom.emit('chat', { s: V.my, i }).catch(() => {}); return; }
-  const opts = REPLY[i] || [];
+  bubble(V.my, CHAT_TXT.get(k), 'me');
+  if (V.mp) {
+    const i = CHAT_V9.indexOf(k), m = { s: V.my, k };
+    if (i >= 0) m.i = i;
+    if (MP.nroom) MP.nroom.emit('chat', m).catch(() => {});
+    return;
+  }
+  const opts = REPLY[k] || [];
   if (!opts.length || Math.random() < 0.25) return;
   const [rel, says] = opts[Math.floor(Math.random() * opts.length)];
   const seat = (V.my + rel) % 4;
   if (!V.st.seats[seat] || V.st.seats[seat].kind !== 'bot') return;
   setTimeout(() => bubble(seat, says[Math.floor(Math.random() * says.length)]), 700 + Math.random() * 900);
 }
-function chatRecv(m) {                                // 联机：别人发的快捷语
+function chatRecv(m) {                                // 联机：别人发的快捷语（新版本发 key，老版本发序号）
   if (!m || m.sameTab || !m.data) return;
-  const s = Number(m.data.s), i = Number(m.data.i);
-  if (!(s >= 0 && s < 4) || !(i >= 0 && i < CHAT_ALL.length)) return;
+  const s = Number(m.data.s);
+  let k = typeof m.data.k === 'string' && CHAT_TXT.has(m.data.k) ? m.data.k : null;
+  if (!k) { const i = Number(m.data.i); if (i >= 0 && i < CHAT_V9.length) k = CHAT_V9[i]; }
+  if (!(s >= 0 && s < 4) || !k) return;
   const d = MP.doc, seat = d && d.seats && d.seats[s];
   if (!seat || seat.kind !== 'human' || (m.by && seat.uid !== m.by)) return;   // 只认坐在那个位置上的人
-  if (MODE === 'mp') bubble(s, CHAT_ALL[i]);
+  if (MODE === 'mp') bubble(s, CHAT_TXT.get(k));
 }
 (() => {
   const cb = $('#chatBtn'), pop = $('#chatPop');
   if (!cb || !pop) return;
   cb.addEventListener('click', e => { e.stopPropagation(); chatOpen(); });
-  pop.addEventListener('click', e => { e.stopPropagation(); const b = e.target.closest('[data-chat]'); if (b) chatSend(Number(b.dataset.chat)); });
+  pop.addEventListener('click', e => {
+    e.stopPropagation();
+    const t = e.target.closest('[data-tab]');
+    if (t) { chatTab(t.dataset.tab); return; }
+    const sg = e.target.closest('[data-signs]');
+    if (sg) { chatOpen(false); openSheet('signSheet'); return; }
+    const b = e.target.closest('[data-chat]');
+    if (b) chatSend(b.dataset.chat);
+  });
   document.addEventListener('click', () => { if (!pop.hidden) chatOpen(false); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !pop.hidden) chatOpen(false); });
 })();
 
 /* ---------- 声音：背景音乐 + 音效（打开页面后第一次点屏幕才响，浏览器的规定） ---------- */
-const SND = { on: loadJSON('gz-sound', 1) !== 0, ctx: null, mus: null, fx: null, playing: false, timer: null, idx: 0, loopAt: 0, loop: null };
-const BEAT = 60 / 76;
-// 原创小曲，D 宫五声调（1=D）：[音, 拍]，'-' 是空拍。四句一遍，约 50 秒
-const TUNE = [
-  ['3', .5], ['5', .5], ['6', 1], ['5', .5], ['3', .5], ['2', 1], ['3', 1.5], ['2', .5], ['1', 1], ['6,', 1],
-  ['2', .5], ['3', .5], ['5', 1], ['3', .5], ['2', .5], ['1', 1], ['2', 3], ['-', 1],
-  ['3', .5], ['5', .5], ['6', 1], ["1'", 1], ['6', .5], ['5', .5], ['6', 1.5], ['5', .5], ['3', 1], ['2', 1],
-  ['1', .5], ['2', .5], ['3', 1], ['2', .5], ['1', .5], ['6,', 1], ['1', 3], ['-', 1],
-  ['5', 1], ['6', .5], ["1'", .5], ["2'", 1], ["1'", 1], ['6', 1.5], ['5', .5], ['6', 1], ["1'", 1],
-  ['5', .5], ['6', .5], ['5', .5], ['3', .5], ['2', 1], ['3', 1], ['5', 3], ['-', 1],
-  ['6', .5], ['5', .5], ['3', 1], ['5', .5], ['6', .5], ["1'", 1], ["2'", 1.5], ["1'", .5], ['6', 1], ['5', 1],
-  ['3', .5], ['5', .5], ['2', 1], ['3', .5], ['2', .5], ['1', 1], ['1', 3], ['-', 1],
-];
-const HZ = { '5,': 220, '6,': 246.94, '1': 293.66, '2': 329.63, '3': 369.99, '5': 440, '6': 493.88, "1'": 587.33, "2'": 659.26 };
-const ROOTS = [73.42, 73.42, 110, 82.41, 73.42, 110, 73.42, 73.42, 110, 123.47, 110, 110, 123.47, 73.42, 110, 73.42];   // 每小节的低音
-function buildLoop() {
-  const ev = [];
-  let at = 0;
-  for (const [d, b] of TUNE) { if (d !== '-') ev.push({ at, k: 'm', f: HZ[d], d: b }); at += b; }
-  ROOTS.forEach((f, bar) => {
-    const b0 = bar * 4;
-    ev.push({ at: b0, k: 'b', f, d: 1.7 }, { at: b0 + 2, k: 'b', f: f * 1.5, d: 1.5 });
-    ev.push({ at: b0, k: 'drum', v: 0.5 }, { at: b0 + 2, k: 'drum', v: 0.25 }, { at: b0 + 1.5, k: 'shk' }, { at: b0 + 3.5, k: 'shk' });
-  });
-  return { ev: ev.sort((x, y) => x.at - y.at), beats: at };
+// ==== 音乐开始 ====
+// 背景音乐：三首原创的五声调小曲。拨弦用 Karplus-Strong 现算（像古筝），笛子用正弦波加一点泛音和气声，
+// 八音盒用两个正弦叠出铃声；再过一个小房间的混响。只用 WebAudio，离线渲染（试听）和在线播放走同一套代码。
+const MUS_TRACKS = (() => {
+  // 简谱：1~7 是音阶，逗号低八度、撇号高八度；'-' 空拍。[音, 拍]
+  const T = {
+    shan: {                                              // 山间：D 宫（1=D），古筝拨弦，慢
+      name: '山间', key: 74, base: 50, bpm: 66, voice: 'pluck', gain: 1.9,
+      mel: [
+        ['5,', 1], ['1', .5], ['2', .5], ['3', 2], ['5', 1], ['3', .5], ['2', .5], ['1', 2],
+        ['2', 1], ['3', 1], ['6,', 1], ['1', 1], ['2', 4],
+        ['5,', 1], ['1', .5], ['2', .5], ['3', 2], ['6', 1], ['5', .5], ['3', .5], ['5', 2],
+        ['3', .5], ['2', .5], ['1', 1], ['6,', 1], ['2', 1], ['1', 4],
+        ['6', 1], ["1'", 1], ["2'", 2], ["3'", 1], ["2'", .5], ["1'", .5], ['6', 2],
+        ['5', 1], ['6', .5], ["1'", .5], ["2'", 1], ["1'", 1], ['6', 4],
+        ['5', 1], ['3', .5], ['5', .5], ['6', 2], ["1'", 1], ['6', .5], ['5', .5], ['3', 2],
+        ['2', 1], ['3', .5], ['5', .5], ['3', 1], ['2', 1], ['1', 4],
+      ],
+      roots: ['1', '1', '6,', '5,', '1', '6,', '2', '1', '6,', '6,', '5,', '6,', '1', '6,', '5,', '1'],
+      arp: [[0, 3, 5, 6, 7, 6, 5, 3], [0, 3, 5, 7, 5, 3, 5, 3]],   // 每小节八个八分音符的分解和弦：按五声音阶往上数几级（3 级≈五度，5 级=八度），怎么数都不出调
+    },
+    zhu: {                                               // 竹楼：C 调羽调式（6=A），竹笛加柔和的长音垫底
+      name: '竹楼', key: 72, base: 48, bpm: 58, voice: 'flute', gain: 0.45,
+      mel: [
+        ['6,', 2], ['1', 1], ['2', 1], ['3', 3], ['2', 1], ['1', 1], ['2', 1], ['6,', 2], ['5,', 4],
+        ['6,', 2], ['1', 1], ['3', 1], ['5', 2], ['3', 1], ['2', 1], ['3', 1], ['2', 1], ['1', 1], ['2', 1], ['6,', 4],
+        ['3', 1], ['5', 1], ['6', 2], ["1'", 2], ['6', 1], ['5', 1], ['6', 1], ['5', 1], ['3', 2], ['2', 4],
+        ['3', 1], ['5', 1], ['6', 1], ['5', 1], ['3', 2], ['2', 1], ['1', 1], ['2', 1], ['3', 1], ['1', 1], ['6,', 1], ['6,', 4],
+      ],
+      roots: ['6,', '1', '6,', '5,', '6,', '1', '2', '6,', '1', '6,', '1', '2', '1', '1', '2', '6,'],
+      pad: true,
+    },
+    he: {                                                // 八音盒：G 宫（1=G），轻快
+      name: '八音盒', key: 67, base: 55, bpm: 80, voice: 'bell', gain: 1,
+      mel: [
+        ["1'", .5], ["2'", .5], ["3'", 1], ["2'", .5], ["1'", .5], ['6', 1], ['5', .5], ['6', .5], ["1'", 1], ['6', 2],
+        ["3'", .5], ["5'", .5], ["3'", 1], ["2'", .5], ["1'", .5], ["2'", 1], ["3'", 4],
+        ["5'", .5], ["3'", .5], ["2'", 1], ["3'", .5], ["2'", .5], ["1'", 1], ['6', .5], ["1'", .5], ["2'", 1], ["1'", 2],
+        ['6', .5], ['5', .5], ['6', 1], ["1'", .5], ["2'", .5], ["3'", 1], ["1'", 4],
+        ["6'", 1], ["5'", 1], ["3'", 2], ["5'", .5], ["3'", .5], ["2'", 1], ["1'", 2],
+        ["2'", 1], ["3'", .5], ["5'", .5], ["6'", 1], ["5'", 1], ["3'", 4],
+        ["2'", .5], ["3'", .5], ["2'", 1], ["1'", .5], ['6', .5], ['5', 1], ['6', 1], ["1'", 1], ["2'", 2],
+        ["3'", .5], ["2'", .5], ["1'", 1], ["2'", 1], ['6', 1], ["1'", 4],
+      ],
+      roots: ['1', '6,', '1', '1', '5,', '1', '6,', '1', '6,', '5,', '2', '6,', '2', '5,', '1', '1'],
+      arp: [[0, 5, 3, 5, 7, 5, 3, 5]],
+    },
+  };
+  const DEG = { 1: 0, 2: 2, 3: 4, 5: 7, 6: 9 }, SC = [0, 2, 4, 7, 9];
+  const semi = d => { const n = DEG[d[0]]; let o = 0; for (const ch of d.slice(1)) o += ch === ',' ? -12 : ch === "'" ? 12 : 0; return n + o; };
+  const step = (s0, k) => { const o = Math.floor(s0 / 12), i = SC.indexOf(((s0 % 12) + 12) % 12) + k; return (o + Math.floor(i / 5)) * 12 + SC[((i % 5) + 5) % 5]; };   // 从 s0 往上数 k 级五声音阶
+  for (const id in T) {
+    const t = T[id], ev = [];
+    let at = 0;
+    for (const [d, b] of t.mel) { if (d !== '-') ev.push({ at, k: 'm', n: t.key + semi(d), d: b }); at += b; }
+    const bars = Math.ceil(at / 4);
+    t.roots.slice(0, bars).forEach((r, bar) => {
+      const rs = semi(r), root = t.base + rs, b0 = bar * 4;
+      if (t.arp) {
+        const pat = t.arp[bar % t.arp.length];
+        pat.forEach((k, i) => { if (i === 0) ev.push({ at: b0, k: 'bass', n: root - 12 < 40 ? root : root - 12, d: 4 }); else ev.push({ at: b0 + i * 0.5, k: 'acc', n: t.base + step(rs, k), d: 1 }); });
+      }
+      if (t.pad) {
+        ev.push({ at: b0, k: 'pad', ns: [root, root + 7, root + 12], d: 4 });             // 空五度，怎么都在五声音阶里
+        ev.push({ at: b0, k: 'bass', n: root, d: 4 }, { at: b0 + 2, k: 'bass', n: root + 7, d: 2 });
+      }
+    });
+    t.ev = ev.sort((x, y) => x.at - y.at);
+    t.beats = bars * 4;
+  }
+  return T;
+})();
+const midiHz = n => 440 * Math.pow(2, (n - 69) / 12);
+// 一个音轨的输出：干声 + 小房间混响，最后一个总音量
+function musBus(ctx, dest) {
+  const inp = ctx.createGain(), wet = ctx.createGain(), dry = ctx.createGain(), out = ctx.createGain(), lp = ctx.createBiquadFilter();
+  const sr = ctx.sampleRate, len = Math.floor(sr * 2.4), ir = ctx.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {                                     // 衰减的噪声当混响的冲激响应，越往后越暗
+    const d = ir.getChannelData(ch);
+    let lpv = 0;
+    for (let i = 0; i < len; i++) { const t = i / sr, a = Math.pow(0.001, t / 2.2), cut = 0.5 - 0.42 * Math.min(1, t / 1.4); lpv += (Math.random() * 2 - 1 - lpv) * cut; d[i] = lpv * a; }
+  }
+  const conv = ctx.createConvolver();
+  conv.buffer = ir;
+  lp.type = 'lowpass'; lp.frequency.value = 5200; lp.Q.value = 0.5;
+  dry.gain.value = 0.82; wet.gain.value = 0.32;
+  inp.connect(lp); lp.connect(dry); lp.connect(conv); conv.connect(wet); dry.connect(out); wet.connect(out); out.connect(dest);
+  return { inp, out, cache: new Map() };
 }
+// 拨弦：Karplus-Strong。下面这种写法（当前和下一个样本取平均）周期是 N-0.5 个样本，音高是 sr/(N-0.5)，
+// 用 playbackRate 校准到准确的音高（也用它做古筝的滑音）
+function ksBuf(ctx, bus, n, bright, t60) {
+  const key = n + ':' + bright + ':' + t60;
+  if (bus.cache.has(key)) return bus.cache.get(key);
+  const sr = ctx.sampleRate, f = midiHz(n), N = Math.max(4, Math.round(sr / f)), len = Math.floor(sr * Math.min(4.5, t60 + 0.3));
+  const buf = ctx.createBuffer(1, len, sr), d = buf.getChannelData(0), ring = new Float32Array(N);
+  let lp = 0, mean = 0;
+  for (let i = 0; i < N; i++) { lp += (Math.random() * 2 - 1 - lp) * bright; ring[i] = lp; mean += lp; }
+  mean /= N;
+  for (let i = 0; i < N; i++) ring[i] -= mean;
+  const g = Math.pow(0.001, 1 / ((sr / (N - 0.5)) * t60));
+  let idx = 0, peak = 1e-6;
+  for (let i = 0; i < len; i++) {
+    const cur = ring[idx], nx = ring[(idx + 1) % N];
+    d[i] = cur;
+    ring[idx] = g * 0.5 * (cur + nx);
+    idx = (idx + 1) % N;
+    if (Math.abs(cur) > peak) peak = Math.abs(cur);
+  }
+  const fade = Math.floor(sr * 0.25);
+  for (let i = 0; i < len; i++) { d[i] /= peak; if (i > len - fade) d[i] *= (len - i) / fade; }
+  const r = { buf, rate: f / (sr / (N - 0.5)) };
+  bus.cache.set(key, r);
+  return r;
+}
+function musPluck(ctx, bus, t, n, vol, opt) {
+  const o = opt || {}, k = ksBuf(ctx, bus, n, o.bright || 0.55, o.t60 || 2.4);
+  const s = ctx.createBufferSource(), g = ctx.createGain(), p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+  s.buffer = k.buf;
+  if (o.slide) { s.playbackRate.setValueAtTime(k.rate * Math.pow(2, -o.slide / 12), t); s.playbackRate.linearRampToValueAtTime(k.rate, t + 0.09); }
+  else s.playbackRate.value = k.rate;
+  g.gain.value = vol;
+  s.connect(g);
+  if (p) { p.pan.value = o.pan || 0; g.connect(p); p.connect(bus.inp); } else g.connect(bus.inp);
+  s.start(t); s.stop(t + k.buf.duration / k.rate);
+}
+function musFlute(ctx, bus, t, n, dur, vol) {                         // 竹笛：正弦为主、一点二次泛音，起音带气声，拉长了再加颤音
+  const f = midiHz(n), o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), g2 = ctx.createGain(), lp = ctx.createBiquadFilter();
+  const lfo = ctx.createOscillator(), lg = ctx.createGain();
+  o1.type = 'sine'; o2.type = 'sine'; o1.frequency.value = f; o2.frequency.value = f * 2; g2.gain.value = 0.18;
+  lp.type = 'lowpass'; lp.frequency.value = 3200;
+  lfo.frequency.value = 5; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(0, t + Math.min(0.35, dur * 0.4)); lg.gain.linearRampToValueAtTime(f * 0.005, t + Math.min(0.9, dur * 0.8));
+  lfo.connect(lg); lg.connect(o1.frequency); lg.connect(o2.frequency);
+  o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(lp); lp.connect(bus.inp);
+  const a = 0.09, rel = Math.min(0.28, dur * 0.4), end = t + dur;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + a);
+  g.gain.setValueAtTime(vol, Math.max(t + a + 0.01, end - rel)); g.gain.exponentialRampToValueAtTime(0.0001, end + 0.05);
+  [o1, o2, lfo].forEach(x => { x.start(t); x.stop(end + 0.1); });
+  // 气声：一小段带通噪声
+  const len = Math.floor(ctx.sampleRate * 0.12), nb = ctx.createBuffer(1, len, ctx.sampleRate), nd = nb.getChannelData(0);
+  for (let i = 0; i < len; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  const ns = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), ng = ctx.createGain();
+  ns.buffer = nb; bp.type = 'bandpass'; bp.frequency.value = Math.min(6000, f * 4); bp.Q.value = 1.5; ng.gain.value = vol * 0.35;
+  ns.connect(bp); bp.connect(ng); ng.connect(bus.inp); ns.start(t);
+}
+function musPad(ctx, bus, t, ns, dur, vol) {                         // 柔和的长音：两个略微错开的三角波，慢起慢收
+  const end = t + dur, g = ctx.createGain(), lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.3;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + Math.min(1.4, dur * 0.4));
+  g.gain.setValueAtTime(vol, end - Math.min(1.2, dur * 0.35)); g.gain.exponentialRampToValueAtTime(0.0001, end + 0.6);
+  g.connect(lp); lp.connect(bus.inp);
+  for (const n of ns) for (const det of [-4, 4]) {
+    const o = ctx.createOscillator();
+    o.type = 'triangle'; o.frequency.value = midiHz(n); o.detune.value = det;
+    o.connect(g); o.start(t); o.stop(end + 0.7);
+  }
+}
+function musBell(ctx, bus, t, n, vol) {                              // 八音盒：基音 + 高八度（衰减快）+ 一点不和谐的泛音
+  const f = midiHz(n);
+  [[1, 1, 1.6], [2, 0.32, 0.5], [3.01, 0.08, 0.25]].forEach(([m, a, dec]) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = f * m;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol * a, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+    o.connect(g); g.connect(bus.inp); o.start(t); o.stop(t + dec + 0.05);
+  });
+}
+// 排一个音：k 是 m（主旋律）、acc（分解和弦）、bass、pad。每个音的轻重、早晚随手差一点点，听着不死板
+function musNote(ctx, bus, tr, e, t, beat) {
+  const G = tr.gain || 1, hum = 1 + (Math.random() - 0.5) * 0.2;
+  if (e.k === 'pad') return musPad(ctx, bus, t, e.ns, e.d * beat, 0.05 * G);
+  if (e.k === 'bass') return musPluck(ctx, bus, t, e.n, (tr.voice === 'bell' ? 0.22 : 0.32) * G * hum, { bright: 0.35, t60: 3.2 });
+  if (e.k === 'acc') {
+    const ta = t + (Math.random() - 0.5) * 0.014;
+    return tr.voice === 'bell' ? musBell(ctx, bus, ta, e.n, 0.07 * G * hum) : musPluck(ctx, bus, ta, e.n, 0.16 * G * hum, { bright: 0.45, t60: 1.8, pan: ((e.n % 5) - 2) * 0.12 });
+  }
+  // 主旋律
+  if (tr.voice === 'flute') return musFlute(ctx, bus, t, e.n, e.d * beat * 0.97, 0.2 * G);
+  if (tr.voice === 'bell') return musBell(ctx, bus, t, e.n, 0.2 * G * hum);
+  return musPluck(ctx, bus, t, e.n, 0.42 * G * hum, { bright: 0.62, t60: 2.6, slide: e.d >= 2 ? 1 : 0 });
+}
+// ==== 音乐结束 ====
+
+// 右上角 🎵 一键开关全部声音；菜单里挑曲子（山间、竹楼、八音盒），也可以只关音乐、留着音效
+const SND = { on: loadJSON('gz-sound', 1) !== 0, tune: loadJSON('gz-tune', 'shan'), ctx: null, bus: null, mus: null, fx: null, playing: false, timer: null, idx: 0, loopAt: 0, loopN: 0 };
+if (SND.tune !== 'off' && !MUS_TRACKS[SND.tune]) SND.tune = 'shan';
+const MUS_GAIN = 0.5;
 function sndInit() {
   if (SND.ctx) return SND.ctx;
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -2429,9 +2820,8 @@ function sndInit() {
   try { SND.ctx = new AC(); } catch (e) { return null; }
   const ctx = SND.ctx, master = ctx.createGain();
   master.gain.value = 0.9; master.connect(ctx.destination);
-  SND.mus = ctx.createGain(); SND.mus.gain.value = 0.45; SND.mus.connect(master);
+  SND.mus = ctx.createGain(); SND.mus.gain.value = MUS_GAIN; SND.mus.connect(master);
   SND.fx = ctx.createGain(); SND.fx.gain.value = 0.6; SND.fx.connect(master);
-  SND.loop = buildLoop();
   return ctx;
 }
 function env(g, t, peak, a, dur) {
@@ -2439,32 +2829,17 @@ function env(g, t, peak, a, dur) {
   g.gain.exponentialRampToValueAtTime(peak, t + a);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 }
-function noteFlute(t, f, dur) {                       // 像葫芦丝：三角波加一点锯齿的簧片声，起音后带颤音
-  const ctx = SND.ctx, o = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), g2 = ctx.createGain(), lp = ctx.createBiquadFilter();
-  const lfo = ctx.createOscillator(), lg = ctx.createGain();
-  o.type = 'triangle'; o2.type = 'sawtooth'; o.frequency.value = f; o2.frequency.value = f;
-  g2.gain.value = 0.16; lp.type = 'lowpass'; lp.frequency.value = 1700; lp.Q.value = 0.8;
-  lfo.frequency.value = 5.3; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * 0.006, t + Math.min(0.4, dur * 0.6));
-  lfo.connect(lg); lg.connect(o.frequency); lg.connect(o2.frequency);
-  o.connect(g); o2.connect(g2); g2.connect(g); g.connect(lp); lp.connect(SND.mus);
-  const rel = Math.min(0.22, dur * 0.35);
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.24, t + 0.05);
-  g.gain.setValueAtTime(0.24, t + Math.max(0.06, dur - rel));
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  [o, o2, lfo].forEach(x => { x.start(t); x.stop(t + dur + 0.05); });
-}
 function notePluck(t, f, dur, vol, dest) {
   const ctx = SND.ctx, o = ctx.createOscillator(), g = ctx.createGain();
   o.type = 'triangle'; o.frequency.value = f;
-  o.connect(g); g.connect(dest || SND.mus);
+  o.connect(g); g.connect(dest || SND.fx);
   env(g, t, vol, 0.012, dur);
   o.start(t); o.stop(t + dur + 0.05);
 }
 function noteDrum(t, f0, f1, vol, dur, dest) {
   const ctx = SND.ctx, o = ctx.createOscillator(), g = ctx.createGain();
   o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.8);
-  o.connect(g); g.connect(dest || SND.mus);
+  o.connect(g); g.connect(dest || SND.fx);
   env(g, t, vol, 0.006, dur);
   o.start(t); o.stop(t + dur + 0.05);
 }
@@ -2474,87 +2849,99 @@ function noteNoise(t, dur, freq, vol, type, dest) {
   if (!noiseBuf) { noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.5), ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
   const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
   s.buffer = noiseBuf; f.type = type || 'bandpass'; f.frequency.value = freq; f.Q.value = 1.2;
-  s.connect(f); f.connect(g); g.connect(dest || SND.mus);
+  s.connect(f); f.connect(g); g.connect(dest || SND.fx);
   env(g, t, vol, 0.004, dur);
   s.start(t); s.stop(t + dur + 0.02);
 }
 function musicTick() {
-  const ctx = SND.ctx;
-  if (!ctx || !SND.playing) return;
-  const L = SND.loop, horizon = ctx.currentTime + 0.5;
+  const ctx = SND.ctx, tr = MUS_TRACKS[SND.tune];
+  if (!ctx || !SND.playing || !SND.bus || !tr) return;
+  const beat = 60 / tr.bpm, horizon = ctx.currentTime + 0.6;
   for (let guard = 0; guard < 64; guard++) {
-    if (SND.idx >= L.ev.length) { SND.idx = 0; SND.loopAt += L.beats * BEAT; }
-    const e = L.ev[SND.idx], t = SND.loopAt + e.at * BEAT;
+    if (SND.idx >= tr.ev.length) { SND.idx = 0; SND.loopAt += tr.beats * beat; SND.loopN++; }
+    const e = tr.ev[SND.idx], t = SND.loopAt + e.at * beat;
     if (t > horizon) break;
     SND.idx++;
     if (t < ctx.currentTime - 0.05) continue;          // 切回来时落下的就跳过
-    if (e.k === 'm') noteFlute(t, e.f, e.d * BEAT * 0.96);
-    else if (e.k === 'b') notePluck(t, e.f, e.d * BEAT, 0.16);
-    else if (e.k === 'drum') noteDrum(t, 95, 48, e.v * 0.5, 0.32);
-    else if (e.k === 'shk') noteNoise(t, 0.05, 6500, 0.05, 'highpass');
+    if (e.k === 'm' && SND.loopN % 3 === 2) continue;  // 每三遍有一遍只弹伴奏，耳朵歇一歇
+    try { musNote(ctx, SND.bus, tr, e, t, beat); } catch (err) { /* 一个音出错不影响别的 */ }
   }
 }
 function musicStart() {
   const ctx = sndInit();
-  if (!ctx || SND.playing || !SND.on) return;
+  if (!ctx || SND.playing || !SND.on || !MUS_TRACKS[SND.tune]) return;
   if (ctx.state !== 'running') ctx.resume().catch(() => {});
-  SND.playing = true; SND.idx = 0; SND.loopAt = ctx.currentTime + 0.15;
+  try { SND.bus = musBus(ctx, SND.mus); } catch (e) { SND.bus = null; return; }
+  SND.playing = true; SND.idx = 0; SND.loopN = 0; SND.loopAt = ctx.currentTime + 0.15;
   SND.mus.gain.cancelScheduledValues(ctx.currentTime);
   SND.mus.gain.setValueAtTime(0.0001, ctx.currentTime);
-  SND.mus.gain.exponentialRampToValueAtTime(0.45, ctx.currentTime + 1.5);
+  SND.mus.gain.exponentialRampToValueAtTime(MUS_GAIN, ctx.currentTime + 1.5);
   musicTick();
-  SND.timer = setInterval(musicTick, 120);
+  SND.timer = setInterval(musicTick, 150);
 }
 function musicStop() {
   SND.playing = false;
   clearInterval(SND.timer); SND.timer = null;
-  if (SND.ctx && SND.mus) { const t = SND.ctx.currentTime; SND.mus.gain.cancelScheduledValues(t); SND.mus.gain.setValueAtTime(0.0001, t); }
+  if (SND.bus) { try { SND.bus.out.disconnect(); } catch (e) { /* 已经断开 */ } SND.bus = null; }   // 已经排好的音一起掐掉
 }
 function sfx(k) {
   if (!SND.on || !SND.ctx || SND.ctx.state !== 'running') return;
   const ctx = SND.ctx, t = ctx.currentTime + 0.01, fx = SND.fx;
   try {
-    if (k === 'card') noteNoise(t, 0.04, 2400, 0.22, 'bandpass', fx);
-    else if (k === 'pop') notePluck(t, 880, 0.08, 0.1, fx);
-    else if (k === 'bo') noteDrum(t, 130, 45, 0.6, 0.45, fx);
+    if (k === 'card') noteNoise(t, 0.04, 2400, 0.2, 'bandpass', fx);
+    else if (k === 'pop') notePluck(t, 880, 0.08, 0.08, fx);
+    else if (k === 'bo') noteDrum(t, 130, 45, 0.55, 0.45, fx);
     else if (k === 'pig') {                            // 哼哼两声
       [0, 0.18].forEach(d => {
         const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
         o.type = 'sawtooth'; o.frequency.setValueAtTime(190, t + d); o.frequency.exponentialRampToValueAtTime(115, t + d + 0.13);
-        f.type = 'lowpass'; f.frequency.value = 800; f.Q.value = 7;
+        f.type = 'lowpass'; f.frequency.value = 700; f.Q.value = 5;
         o.connect(f); f.connect(g); g.connect(fx);
-        env(g, t + d, 0.5, 0.012, 0.15);
+        env(g, t + d, 0.4, 0.012, 0.15);
         o.start(t + d); o.stop(t + d + 0.2);
       });
     } else if (k === 'sheep') {                        // 咩
       const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
-      o.type = 'sawtooth'; o.frequency.value = 480; f.type = 'lowpass'; f.frequency.value = 2200;
-      lfo.frequency.value = 22; lg.gain.value = 0.18; lfo.connect(lg); lg.connect(g.gain);
+      o.type = 'triangle'; o.frequency.value = 480; f.type = 'lowpass'; f.frequency.value = 1800;
+      lfo.frequency.value = 22; lg.gain.value = 0.15; lfo.connect(lg); lg.connect(g.gain);
       o.connect(f); f.connect(g); g.connect(fx);
-      env(g, t, 0.28, 0.03, 0.45);
+      env(g, t, 0.26, 0.03, 0.45);
       o.start(t); lfo.start(t); o.stop(t + 0.5); lfo.stop(t + 0.5);
-    } else if (k === 'win') [587.33, 739.99, 880, 1174.66].forEach((f, i) => notePluck(t + i * 0.11, f, 0.32, 0.2, fx));
-    else if (k === 'lose') [440, 369.99, 293.66].forEach((f, i) => notePluck(t + i * 0.2, f, 0.42, 0.18, fx));
+    } else if (k === 'win') [587.33, 739.99, 880, 1174.66].forEach((f, i) => notePluck(t + i * 0.11, f, 0.32, 0.18, fx));
+    else if (k === 'lose') [440, 369.99, 293.66].forEach((f, i) => notePluck(t + i * 0.2, f, 0.42, 0.16, fx));
   } catch (e) { /* 没声音就算了 */ }
 }
 function syncSndBtn() {
   const b = $('#sndBtn');
-  if (!b) return;
-  b.textContent = SND.on ? '🎵' : '🔇';
-  b.setAttribute('aria-pressed', String(SND.on));
-  b.title = SND.on ? '声音开着，点一下关掉' : '声音关了，点一下打开';
+  if (b) {
+    b.textContent = SND.on ? '🎵' : '🔇';
+    b.setAttribute('aria-pressed', String(SND.on));
+    b.title = SND.on ? '声音开着，点一下关掉' : '声音关了，点一下打开';
+  }
+  document.querySelectorAll('#setTune button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.v === SND.tune)));
 }
 function sndToggle() {
   SND.on = !SND.on;
   saveJSON('gz-sound', SND.on ? 1 : 0);
   syncSndBtn();
   if (SND.on) { sndInit(); musicStart(); } else musicStop();
-  toast(SND.on ? '背景音乐和音效开了' : '声音关了');
+  toast(SND.on ? (MUS_TRACKS[SND.tune] ? '背景音乐和音效开了' : '音效开了（音乐在菜单里选）') : '声音关了');
+}
+function setTune(v) {
+  if (v !== 'off' && !MUS_TRACKS[v]) return;
+  SND.tune = v;
+  saveJSON('gz-tune', v);
+  musicStop();
+  if (v !== 'off' && !SND.on) { SND.on = true; saveJSON('gz-sound', 1); }
+  syncSndBtn();
+  if (SND.on && v !== 'off') { const ctx = sndInit(); if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); musicStart(); }
 }
 (() => {
   syncSndBtn();
   const b = $('#sndBtn');
   if (b) b.addEventListener('click', e => { e.stopPropagation(); sndToggle(); });
+  const seg = $('#setTune');
+  if (seg) seg.addEventListener('click', e => { const x = e.target.closest('button'); if (x) setTune(x.dataset.v); });
   const unlock = () => {                              // 浏览器要求先点一下屏幕才能出声
     if (!SND.on) return;
     const ctx = sndInit();
@@ -2568,7 +2955,10 @@ function sndToggle() {
     else { musicStop(); if (SND.ctx) SND.ctx.suspend().catch(() => {}); }
   });
 })();
-
+(() => {                                             // 队友暗号表：菜单、规则、首页都能打开
+  const go = from => () => { if (from) closeSheet(from); openSheet('signSheet'); };
+  [['signsBtn', 'menuSheet'], ['rulesSigns', 'rulesSheet'], ['homeSigns', '']].forEach(([id, from]) => { const b = $('#' + id); if (b) b.addEventListener('click', go(from)); });
+})();
 /* ================= 状态变化 ================= */
 function onState(prev, next) {
   if (!next) return;
@@ -3407,7 +3797,7 @@ if (hot && hot.ready) hot.ready(start); else start((hot && hot.data) || {});
 setTimeout(() => recUpload(true), 6000);
 if (NET) netStartup();
 
-window.__gz = { suitOrderFor, get clock() { return clock; }, timerSec, get renders() { return renderCount; }, get SP() { return SP; }, get MP() { return MP; }, view, legalMoves, applyMove, botChoose, newMatch, nextHand, humanPlay, SET };
+window.__gz = { get SND() { return SND; }, suitOrderFor, get clock() { return clock; }, timerSec, get renders() { return renderCount; }, get SP() { return SP; }, get MP() { return MP; }, view, legalMoves, applyMove, botChoose, newMatch, nextHand, humanPlay, SET };
 })();
 </script>
 </body></html>

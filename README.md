@@ -45,11 +45,24 @@ A four-player trick-taking card game from Mangshi, Yunnan. Play it online with f
 ### 打法小窍门
 
 - 记牌：猪、羊、波出了没有，谁已经没有哪门了。
-- 队友主动拿大牌吃了一墩，多半是想让你接着回这门。
-- 出 2 一般是信号：这门我没有了。
-- 对方在收红桃的时候，垫一张小红桃给队友，破他的满贯。
-- 自己 0 分时可以替队友把波收了，0 分 ×8 还是 0。
 - 大牌别攒到最后才出，免得最后一口气全吃。
+- 赢的时候把分堆到对方一个人身上；牌差的时候守在 3000 分以内，只罚 1 份。
+
+### 队友暗号
+
+队友之间有 7 条公开的暗号。电脑只用这几条，也按这几条去读你出的牌，电脑和电脑之间没有别的暗号。对手也看得懂，用不用自己拿主意。网页的菜单里、快捷语面板里都能随时翻看。
+
+1. **先出哪门，帮回哪门**：谁主动先出的第一门（第一墩的黑桃7不算）多半是他的短门，他的队友先出时回这门。
+2. **开 2：这门没了**：主动出某门的 2，多半是说这是这门最后一张；队友以后多出这门，让他垫牌。
+3. **拿大牌吃：炸弹不在我这**：主动出比这门炸弹（猪、羊、波）还大的牌，自己收下这墩，炸弹又还没出来，意思是"炸弹不在我手里"，队友接着回这门把炸弹逼出来。
+4. **队友没有的那门，多出**：让他往对手身上垫分；对手没有的那门少出。
+5. **破满贯：垫红桃**：对手把出过的红桃都收了，你没这门时垫一张红桃给别人，先垫不带分的 2、3、4。
+6. **帮满贯：红桃给队友**：队友在收满贯，就把红桃垫给他，别垫给对手。
+7. **0 分挡波**：你 0 分、队友有分，波出来时压过队友把它收了。
+
+电脑说真话：手里还有这门时，它不先出 2；手里有猪（羊、波）时，它不拿比猪大的牌先出去吃。
+
+电脑互相对打几万把量过：第 4 条（队友没有的那门多出）最管用。其他几条在电脑之间差别不大，主要是方便人和电脑、人和人之间读懂对方。
 
 ### 怎么用这个网页
 
@@ -62,9 +75,9 @@ A four-player trick-taking card game from Mangshi, Yunnan. Play it online with f
 
 - 每人每手有 15 秒或 30 秒，时间到了系统替你出一张。
 - 实在打不下去可以投降：投降的人把剩下的分全吃下，联机时要队友同意。
-- 电脑配合的时候会冒个气泡说一句，比如「回你♠」「破满贯！」。
-- 点 💬 发快捷语和表情，全桌都看得到。
-- 牌桌右上角的 🎵 可以开关背景音乐。
+- 电脑配合的时候会冒个气泡说一句，比如「回你♠」「破满贯！」。送猪、破满贯、挡波这种要看结果的话，等这一墩收完、核对过才说。
+- 点 💬 发快捷语和表情，全桌都看得到。快捷语分常用、配合、逗趣、芒市话四类（「板扎！」「咋个整？」「莫慌莫慌」……）。
+- 牌桌右上角的 🎵 一键开关声音。菜单里可以换背景音乐（山间、竹楼、八音盒，都是原创的五声调小曲），也可以只关音乐、留着音效。
 - 每把结束能看到这把的配合：谁回了谁的牌、谁破了满贯、谁替队友挡了波。
 
 ### 牌谱和隐私
@@ -113,11 +126,24 @@ Gong Zhu (拱猪, "chase the pig") is a Chinese trick-taking card game for four 
 ### Tips
 
 - Keep track of the cards: has the Pig, the Sheep or the Bo gone yet, and who is out of which suit?
-- When your partner wins a trick on purpose with a high card, they usually want you to lead that suit back.
-- Playing a 2 is usually a signal: "I'm out of this suit."
-- When an opponent is collecting hearts, slip a low heart to your partner to break the slam.
-- With 0 points you can take the Bo for your partner: 0 × 8 is still 0.
 - Don't hoard high cards until the end, or you may be forced to take every trick at once.
+- When you are winning, pile the points onto one opponent; with a bad hand, stay under 3,000 so you pay only 1 unit.
+
+### Partner signals
+
+Partners share seven public signals. The computer players use only these, and read your cards by these same rules; there are no hidden signals between computers. Your opponents can read them too, so use them when it suits you. You can look them up any time from the menu or the chat panel.
+
+1. **Lead back your partner's first suit**: the first suit a player leads on their own (not the forced ♠7) is usually short, so their partner leads it back.
+2. **Leading a 2 means "I'm out"**: leading the 2 of a suit usually means it was the last card of that suit; lead it again so your partner can discard.
+3. **Winning with a card above the bomb means "the bomb isn't mine"**: leading a card higher than that suit's bomb (Pig, Sheep or Bo) while the bomb is still out, and winning the trick, says "I don't hold the bomb". Your partner keeps leading that suit to force the bomb out.
+4. **Lead the suit your partner is out of**, so they can discard points onto an opponent; avoid suits an opponent is out of.
+5. **Break a slam with a heart**: when an opponent has taken every heart so far, discard a heart to someone else, starting with the pointless 2, 3 and 4.
+6. **Feed your partner's slam**: when your partner is collecting all the hearts, discard hearts to them, not to the opponents.
+7. **Shield the Bo at 0 points**: if you have 0 points and your partner has some, overtake your partner and take the Bo yourself.
+
+The computer keeps its signals honest: it won't lead a 2 while it still holds that suit, and it won't lead a card above a bomb it holds itself.
+
+Tens of thousands of computer-vs-computer hands show that signal 4 (lead the suit your partner is out of) matters most. Among computers the others make little difference; mostly they let people and computers understand each other.
 
 ### Playing on this site
 
@@ -130,9 +156,9 @@ The interface is in Chinese. During play:
 
 - Each move has a 15- or 30-second timer; if it runs out, a card is played for you.
 - You can surrender. The surrendering player takes all the remaining points, and online games need your partner's agreement.
-- Computer players say what they are doing in a speech bubble, such as 「回你♠」 ("back to you in spades") or 「破满贯！」 ("slam broken!").
-- 💬 sends quick phrases and emoji that the whole table sees.
-- 🎵 in the top-right corner of the table turns the background music on or off.
+- Computer players say what they are doing in a speech bubble, such as 「回你♠」 ("back to you in spades") or 「破满贯！」 ("slam broken!"). Anything that depends on the result (giving away the Pig, breaking a slam, shielding the Bo) is only said after the trick is over and checked.
+- 💬 sends quick phrases and emoji that the whole table sees, in four groups: everyday, teamwork, banter, and Mangshi dialect (「板扎！」 "awesome!", 「咋个整？」 "now what?", 「莫慌莫慌」 "don't panic").
+- 🎵 in the top-right corner of the table turns all sound on or off. In the menu you can pick the background music (three original pentatonic tunes) or switch off just the music.
 - After each hand, a summary shows the teamwork: who led back whose suit, who broke a slam, and who took the Bo for a partner.
 
 ### Game records and privacy
