@@ -674,7 +674,7 @@ input[type="text"] { font: 600 20px var(--font-ui); letter-spacing: .2em; width:
 
 .toast { position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 40; background: var(--panel); color: var(--panel-ink); border: 1px solid var(--line); padding: 9px 14px; border-radius: 12px; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); max-width: calc(100% - 32px); }
 
-/* 窄屏：标题栏一行放不下时，先藏"第几把"，再藏"对战/练习"小字 */
+/* 窄屏：标题栏一行放不下时，先藏"第几把"，再藏模式小字 */
 @media (max-width: 400px) { #handNo { display: none; } }
 @media (max-width: 370px) { .brand small { display: none; } }
 @media (max-width: 440px) { .in-room .brand small { display: none; } }
