@@ -72,6 +72,18 @@ node tools/scen.js file=新/index.html n=40                       # 配合情景
 node tools/duel.js n=400 new=新/index.html old=index.html        # 同一副牌换座位各打一遍
 ```
 
+电脑喊话（"回你♠""破满贯！"）和每把结算的"这把的配合"，要和桌上的真实情况对得上。改了电脑那一段以后跑一遍：
+
+```
+node tools/speech_check.js file=新/index.html n=600     # 模拟几百把，每句话都和真实局面核对，不对就列出来
+```
+
+队友暗号有没有用：一队按某种改法打、另一队照常，同一副牌换座位各打一遍（不往后推演的那套打法，快）：
+
+```
+node tools/conv_exp.js file=index.html n=20000 exp=noFeed,noRet   # 不写 exp 就把每条暗号都试一遍
+```
+
 `scen.js` 测这几个配合情景：队友主动吃以后回这门；对方在收红桃时，垫红桃给队友破满贯；队友在收满贯时，把红桃给他。
 `duel.js` 的结果：新电脑那队赢几成、平均每把净赚几份。
 

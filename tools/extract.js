@@ -9,7 +9,8 @@ function load(file) {
   const code = html.slice(a, b) + '\n;({ newMatch, startHand, legalMoves, applyMove, winnerOf, scoreOf, botChoose, LEVELS, PTS, PUBLIC, BOMBS, PIG, SHEEP, BO, SP7, suit, rank, nm, clone, ' +
     (html.slice(a, b).includes('function botCtx') ? 'botCtx, ' : '') +
     (html.slice(a, b).includes('function sampleWorld') ? 'sampleWorld, copyWorld, playFast, worldValue, handOutcome, penaltyOf, ' : '') +
-    (html.slice(a, b).includes('function surrender') ? 'surrender, ' : '') + 'H, BOMB_OF, BNAME, SUITNAME, })';
+    (html.slice(a, b).includes('function surrender') ? 'surrender, ' : '') +
+    (html.slice(a, b).includes('function speechEvents') ? 'speechEvents, handNotes, noteHolds, moveNote, endSay, movesOf, SAY, ' : '') + 'H, BOMB_OF, BNAME, SUITNAME, })';
   const ctx = vm.createContext({ Math, JSON, Set, Map, Array, Object, Number, String, Error, console });
   return vm.runInContext(code, ctx, { filename: file });
 }
